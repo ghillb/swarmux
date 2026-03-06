@@ -34,9 +34,28 @@ swarmux --output json submit --json '{
   "mode": "manual",
   "worktree": "/path/to/repo",
   "session": "swarmux-demo",
-  "command": ["bash", "-lc", "echo READY"]
+  "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
 swarmux --output json list
 swarmux popup --once
 ```
 
+## How it works
+
+`swarmux` stores task state in either `files` (default) or `beads` (`SWARMUX_BACKEND=beads`), but runtime execution is always tmux-driven and command-agnostic. The `command` array from `submit` is executed as-is inside a tmux session.
+
+```mermaid
+flowchart TD
+    A[Agent or user] --> B[swarmux CLI]
+    B --> C[Validate payload and command]
+    C --> D{State backend}
+    D -->|files| E[Local files store]
+    D -->|beads| F[bd adapter]
+
+    C --> G[start or delegate]
+    G --> H[runtime::start_task]
+    H --> I["tmux new-session + command"]
+    I --> L[logs + exit marker]
+    L --> M[reconcile updates task state]
+    M --> D
+```
