@@ -1,6 +1,6 @@
 ---
 name: swarmux
-description: Agent-first tmux swarm orchestration CLI. Use it to submit, start, inspect, steer, reconcile, and prune local coding tasks with machine-readable output and strict input validation.
+description: Use this skill when you need tmux-first local task orchestration for coding agents - submit/start/delegate tasks, inspect logs/status, send input, reconcile crashed sessions, and prune finished auto worktrees. Prefer for multi-task local runs requiring machine-readable control and operator tmux visibility.
 ---
 
 # Swarmux
@@ -8,6 +8,19 @@ description: Agent-first tmux swarm orchestration CLI. Use it to submit, start, 
 Use `swarmux` as the control plane for local coding tasks.
 
 Setup reference: `reference/setup.md`
+
+## When to use
+
+- User asks to run multiple coding tasks locally with tmux visibility.
+- User wants an agent control plane with JSON outputs (`submit`, `start`, `logs`, `show`, `list`).
+- User needs lifecycle control (`send`, `stop`, `done`, `fail`, `reconcile`, `prune`).
+- User needs backend-backed task state (`files` default, optional `beads` via `bd`).
+- User wants inspectable local execution instead of hidden/background orchestration.
+
+## Agent command model
+
+- Runtime command is provided by task payload `command` and executed as-is in tmux.
+- Do not assume Codex-only runtime; Codex is a common example, not a hard requirement.
 
 ## Invariants
 
