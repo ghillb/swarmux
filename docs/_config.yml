@@ -1,0 +1,23 @@
+title: "swarmux"
+tagline: "Agent-first tmux swarm orchestration"
+description: "Local tmux control plane for coding tasks."
+url: "http://gerohillebrandt.de"
+baseurl: "/swarmux"
+markdown: kramdown
+highlighter: rouge
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+nav:
+  - title: "Get Started"
+    url: "/getting-started.html"
+  - title: "GitHub"
+    url: "https://github.com/ghillb/swarmux"

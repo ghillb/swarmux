@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b0f14">
+    {% seo %}
+    <link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell">
+        <a class="logo" href="{{ '/' | relative_url }}">swarmux</a>
+        <nav class="site-nav">
+          {% for item in site.nav %}
+          <a href="{{ item.url | relative_url }}">{{ item.title }}</a>
+          {% endfor %}
+        </nav>
+      </div>
+    </header>
+
+    <main class="site-main">
+      <div class="shell">
+        <article class="page">
+          {% unless page.hide_title %}
+          {% if page.title %}
+          <h1>{{ page.title }}</h1>
+          {% endif %}
+          {% endunless %}
+          {{ content }}
+        </article>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-wrap">
+        <span><strong>swarmux</strong> · tmux-first local swarm control</span>
+        <a href="https://github.com/ghillb/swarmux">GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>

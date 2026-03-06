@@ -48,4 +48,3 @@ The repo is wired for:
 - `release-plz` release PRs
 - GitHub-only releases
 - `cargo-dist` archives for Linux/macOS
-

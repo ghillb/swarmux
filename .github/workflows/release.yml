@@ -5,6 +5,16 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      force_dist:
+        description: Run dist jobs even if release-plz creates no release
+        required: false
+        type: boolean
+        default: false
+      force_tag:
+        description: Optional tag override for dist build on manual runs
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -80,7 +90,7 @@ jobs:
   dist-local:
     name: dist-local (${{ matrix.target }})
     needs: release
-    if: needs.release.outputs.released == 'true'
+    if: needs.release.outputs.released == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_dist == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +108,21 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve dist tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ -n "${{ needs.release.outputs.tag }}" ]]; then
+            tag="${{ needs.release.outputs.tag }}"
+          elif [[ -n "${{ github.event.inputs.force_tag }}" ]]; then
+            tag="${{ github.event.inputs.force_tag }}"
+          else
+            version=$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)
+            tag="v${version}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
       - name: Checkout release tag
+        if: needs.release.outputs.released == 'true'
         shell: bash
         run: |
           git fetch --tags
@@ -115,7 +139,7 @@ jobs:
         id: dist
         shell: bash
         run: |
-          dist build --tag "${{ needs.release.outputs.tag }}" --target "${{ matrix.target }}" --artifacts=local --output-format=json > dist-manifest.json
+          dist build --tag "${{ steps.dist_tag.outputs.tag }}" --target "${{ matrix.target }}" --artifacts=local --output-format=json > dist-manifest.json
           echo "paths<<EOF" >> "$GITHUB_OUTPUT"
           dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -131,7 +155,7 @@ jobs:
     needs:
       - release
       - dist-local
-    if: needs.release.outputs.released == 'true'
+    if: needs.release.outputs.released == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_dist == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -139,7 +163,21 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Resolve dist tag
+        id: dist_tag
+        shell: bash
+        run: |
+          if [[ -n "${{ needs.release.outputs.tag }}" ]]; then
+            tag="${{ needs.release.outputs.tag }}"
+          elif [[ -n "${{ github.event.inputs.force_tag }}" ]]; then
+            tag="${{ github.event.inputs.force_tag }}"
+          else
+            version=$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)
+            tag="v${version}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
       - name: Checkout release tag
+        if: needs.release.outputs.released == 'true'
         shell: bash
         run: |
           git fetch --tags
@@ -161,7 +199,7 @@ jobs:
         id: dist
         shell: bash
         run: |
-          dist build --tag "${{ needs.release.outputs.tag }}" --artifacts=global --output-format=json > dist-manifest.json
+          dist build --tag "${{ steps.dist_tag.outputs.tag }}" --artifacts=global --output-format=json > dist-manifest.json
           echo "paths<<EOF" >> "$GITHUB_OUTPUT"
           dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
