@@ -40,11 +40,3 @@ swarmux --output json list
 swarmux popup --once
 ```
 
-## Release model
-
-The repo is wired for:
-
-- semantic PR titles
-- `release-plz` release PRs
-- GitHub-only releases
-- `cargo-dist` archives for Linux/macOS
