@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      # PAT required so the release PR and release tag can trigger other workflows.
+      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run release-plz release-pr
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+          config: release-plz.toml
+          version: 0.3.156
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: release-pr
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.meta.outputs.released }}
+      tag: ${{ steps.meta.outputs.tag }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run release-plz release
+        id: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+          config: release-plz.toml
+          version: 0.3.156
+      - name: Capture release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ steps.release.outputs.releases_created }}" == "true" ]]; then
+            version=$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+  dist-local:
+    name: dist-local (${{ matrix.target }})
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: macos-13
+            target: x86_64-apple-darwin
+          - runner: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout release tag
+        shell: bash
+        run: |
+          git fetch --tags
+          git checkout "${{ needs.release.outputs.tag }}"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: Install dist
+        shell: bash
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh
+      - name: Build local artifacts
+        id: dist
+        shell: bash
+        run: |
+          dist build --tag "${{ needs.release.outputs.tag }}" --target "${{ matrix.target }}" --artifacts=local --output-format=json > dist-manifest.json
+          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
+          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: Upload local artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-local-${{ matrix.target }}
+          path: |
+            ${{ steps.dist.outputs.paths }}
+            dist-manifest.json
+
+  dist-global:
+    needs:
+      - release
+      - dist-local
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout release tag
+        shell: bash
+        run: |
+          git fetch --tags
+          git checkout "${{ needs.release.outputs.tag }}"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Install dist
+        shell: bash
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh
+      - name: Download local artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-local-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Build global artifacts
+        id: dist
+        shell: bash
+        run: |
+          dist build --tag "${{ needs.release.outputs.tag }}" --artifacts=global --output-format=json > dist-manifest.json
+          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
+          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - name: Upload global artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-global
+          path: |
+            ${{ steps.dist.outputs.paths }}
+            dist-manifest.json
+
+  upload-release:
+    needs:
+      - release
+      - dist-global
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: artifacts
+          merge-multiple: true
+      - name: Upload artifacts to GitHub Release
+        shell: bash
+        run: |
+          rm -f artifacts/dist-manifest.json || true
+          gh release upload "${{ needs.release.outputs.tag }}" artifacts/* --clobber
