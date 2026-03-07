@@ -2,7 +2,7 @@
 repo_url = "https://github.com/ghillb/swarmux"
 git_only = true
 publish = false
-changelog_update = false
+changelog_update = true
 git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
