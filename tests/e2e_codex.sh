@@ -27,7 +27,7 @@ PAYLOAD="$(jq -nc \
   --arg worktree "$REPO_DIR" \
   '{
     title: "Codex e2e task",
-    repo: "e2e",
+    repo_ref: "e2e",
     repo_root: $repo_root,
     mode: "manual",
     worktree: $worktree,

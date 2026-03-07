@@ -32,15 +32,15 @@ swarmux --output json schema
 ```bash
 swarmux --output json submit --json '{
   "title": "hello",
-  "repo": "demo",
+  "repo_ref": "demo",
   "repo_root": "/path/to/repo",
   "mode": "manual",
   "worktree": "/path/to/repo",
   "session": "swarmux-demo",
-  "command": ["bash", "-lc", "echo READY"]
+  "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
 swarmux --output json list
-swarmux --output json start swx-REPLACE_ME
+swarmux --output json start <id>
 ```
 
 ## tmux popup mapping
@@ -60,8 +60,8 @@ tmux source-file ~/.config/tmux/tmux.conf
 ## Operator commands
 
 ```bash
-swarmux --output json show swx-REPLACE_ME
-swarmux --output json logs swx-REPLACE_ME --raw
+swarmux --output json show <id>
+swarmux --output json logs <id> --raw
 swarmux --output json reconcile
 swarmux --output json prune --apply
 ```

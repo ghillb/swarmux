@@ -57,7 +57,7 @@ fn manual_start_send_logs_reconcile_and_stop_work() {
     harness.run(&["init"]).success();
 
     let payload = format!(
-        "{{\"title\":\"Runtime task\",\"repo\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-runtime\",\"session\":\"swarmux-runtime\",\"command\":[\"echo\",\"runtime\"]}}",
+        "{{\"title\":\"Runtime task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-runtime\",\"session\":\"swarmux-runtime\",\"command\":[\"echo\",\"runtime\"]}}",
         harness.fake_root.path().join("repo").display()
     );
 
@@ -104,7 +104,7 @@ fn manual_start_send_logs_reconcile_and_stop_work() {
         .stdout(predicate::str::contains("\"state\":\"succeeded\""));
 
     let second = format!(
-        "{{\"title\":\"Stop task\",\"repo\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-stop\",\"session\":\"swarmux-stop\",\"command\":[\"echo\",\"stop\"]}}",
+        "{{\"title\":\"Stop task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-stop\",\"session\":\"swarmux-stop\",\"command\":[\"echo\",\"stop\"]}}",
         harness.fake_root.path().join("repo").display()
     );
     let submitted = harness
@@ -131,7 +131,7 @@ fn delegate_auto_mode_creates_worktree_and_prune_removes_it() {
     harness.run(&["init"]).success();
 
     let payload = format!(
-        "{{\"title\":\"Auto task\",\"repo\":\"core\",\"repo_root\":\"{}\",\"mode\":\"auto\",\"command\":[\"echo\",\"auto\"]}}",
+        "{{\"title\":\"Auto task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"auto\",\"command\":[\"echo\",\"auto\"]}}",
         harness.fake_root.path().join("repo").display()
     );
 
@@ -148,8 +148,8 @@ fn delegate_auto_mode_creates_worktree_and_prune_removes_it() {
     let worktree = started["worktree"].as_str().unwrap().to_owned();
     let branch = started["branch"].as_str().unwrap().to_owned();
 
-    assert!(session.starts_with("swarmux-"));
-    assert!(branch.starts_with("swarmux/"));
+    assert!(session.starts_with("swx-core-"));
+    assert!(branch.starts_with("swx/"));
     assert!(worktree.contains(&task_id));
 
     let git_log = fs::read_to_string(harness.fake_root.path().join("git.log")).unwrap();

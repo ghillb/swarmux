@@ -55,7 +55,7 @@ fn beads_backend_supports_doctor_init_submit_show_and_done() {
 
     let payload = r#"{
       "title":"Beads task",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-beads",
@@ -102,7 +102,7 @@ fn beads_backend_supports_start_and_reconcile() {
 
     let payload = r#"{
       "title":"Beads runtime",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-beads-runtime",

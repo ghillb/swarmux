@@ -32,7 +32,7 @@ pub fn schema_json() -> Value {
                 "supports_dry_run": true,
                 "required_payload_fields": [
                     "title",
-                    "repo",
+                    "repo_ref",
                     "repo_root",
                     "mode",
                     "command"

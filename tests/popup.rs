@@ -17,7 +17,7 @@ fn popup_title_and_once_render_summary() {
 
     let payload = r#"{
       "title":"Popup task",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-popup",

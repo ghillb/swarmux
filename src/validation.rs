@@ -6,9 +6,9 @@ const RESERVED_CHARS: [char; 3] = ['%', '?', '#'];
 
 pub fn validate_submit_payload(payload: &SubmitPayload) -> Result<()> {
     reject_control_chars(&payload.title, "title")?;
-    reject_control_chars(&payload.repo, "repo")?;
+    reject_control_chars(&payload.repo_ref, "repo_ref")?;
     reject_control_chars(&payload.repo_root, "repo_root")?;
-    reject_reserved_chars(&payload.repo, "repo")?;
+    reject_reserved_chars(&payload.repo_ref, "repo_ref")?;
     reject_path_traversal(&payload.repo_root, "repo_root")?;
 
     if payload.command.is_empty() {

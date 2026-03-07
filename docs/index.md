@@ -28,7 +28,7 @@ hide_title: true
     <pre><code>$ swarmux doctor
 $ swarmux init
 $ swarmux --output json submit --json '{...}'
-$ swarmux --output json start swx-...
+$ swarmux --output json start <id>
 $ swarmux popup --once</code></pre>
   </div>
 </div>

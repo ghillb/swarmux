@@ -1,6 +1,7 @@
 mod beads;
 mod cli;
 mod config;
+mod id;
 mod model;
 mod runtime;
 mod schema;

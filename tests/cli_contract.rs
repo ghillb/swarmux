@@ -17,7 +17,7 @@ fn schema_is_available_as_machine_readable_json() {
 fn submit_supports_raw_json_payloads_in_dry_run_mode() {
     let payload = r#"{
       "title":"Implement acceptance criteria",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-worktree",
@@ -35,4 +35,23 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
             "\"title\":\"Implement acceptance criteria\"",
         ))
         .stdout(predicate::str::contains("\"session\":\"swarmux-task-1\""));
+}
+
+#[test]
+fn submit_rejects_legacy_repo_key() {
+    let payload = r#"{
+      "title":"Legacy payload",
+      "repo":"core",
+      "repo_root":"/tmp/core",
+      "mode":"manual",
+      "worktree":"/tmp/swarmux-worktree",
+      "session":"swarmux-task-legacy",
+      "command":["echo","legacy"]
+    }"#;
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["submit", "--dry-run", "--json", payload]);
+    command.assert().failure().stderr(predicate::str::contains(
+        "failed to parse submit payload JSON",
+    ));
 }

@@ -1,7 +1,6 @@
 use crate::config::AppConfig;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,7 +12,7 @@ pub enum TaskMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubmitPayload {
     pub title: String,
-    pub repo: String,
+    pub repo_ref: String,
     pub repo_root: String,
     pub mode: TaskMode,
     #[serde(default)]
@@ -75,14 +74,10 @@ pub struct TaskRecord {
 }
 
 impl TaskRecord {
-    pub fn from_submit(payload: SubmitPayload, config: &AppConfig) -> Self {
-        let id = format!("swx-{}", Uuid::now_v7().simple());
-        Self::from_submit_with_id(payload, config, id)
-    }
-
     pub fn from_submit_with_id(payload: SubmitPayload, config: &AppConfig, id: String) -> Self {
         let now = Utc::now();
         let log_file = config.logs_dir().join(format!("{id}.log"));
+        let repo = repo_slug(&payload.repo_ref);
         let (branch, worktree, session) = match payload.mode {
             TaskMode::Auto => {
                 let repo_key = payload
@@ -90,7 +85,7 @@ impl TaskRecord {
                     .rsplit('/')
                     .find(|part| !part.is_empty())
                     .unwrap_or("repo");
-                let branch = format!("swarmux/{id}");
+                let branch = format!("swx/{id}");
                 let worktree = config
                     .home
                     .join("worktrees")
@@ -98,7 +93,7 @@ impl TaskRecord {
                     .join(&id)
                     .display()
                     .to_string();
-                let session = format!("swarmux-{id}");
+                let session = format!("swx-{repo}-{id}");
                 (Some(branch), Some(worktree), Some(session))
             }
             TaskMode::Manual => (None, payload.worktree, payload.session),
@@ -107,7 +102,7 @@ impl TaskRecord {
         Self {
             id,
             title: payload.title,
-            repo: payload.repo,
+            repo,
             repo_root: payload.repo_root,
             mode: payload.mode,
             branch,
@@ -124,6 +119,38 @@ impl TaskRecord {
             updated_at: now,
             finished_at: None,
         }
+    }
+}
+
+fn repo_slug(repo: &str) -> String {
+    let leaf = repo
+        .trim()
+        .rsplit(['/', '\\'])
+        .find(|part| !part.is_empty())
+        .unwrap_or("");
+    let leaf = leaf.strip_suffix(".git").unwrap_or(leaf);
+
+    let mut slug = String::new();
+    let mut previous_dash = false;
+
+    for ch in leaf.to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            previous_dash = false;
+            continue;
+        }
+
+        if !previous_dash {
+            slug.push('-');
+            previous_dash = true;
+        }
+    }
+
+    let trimmed = slug.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "repo".to_string()
+    } else {
+        trimmed
     }
 }
 
@@ -160,5 +187,28 @@ impl EventRecord {
             reason,
             timestamp: Utc::now(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::repo_slug;
+
+    #[test]
+    fn repo_slug_normalizes_special_characters() {
+        assert_eq!(repo_slug("Owner/Repo.Name"), "repo-name");
+        assert_eq!(repo_slug("core"), "core");
+    }
+
+    #[test]
+    fn repo_slug_uses_leaf_component() {
+        assert_eq!(repo_slug("owner/repo"), "repo");
+        assert_eq!(repo_slug("git@github.com:owner/repo.git"), "repo");
+    }
+
+    #[test]
+    fn repo_slug_falls_back_for_empty_input() {
+        assert_eq!(repo_slug("   "), "repo");
+        assert_eq!(repo_slug("---"), "repo");
     }
 }

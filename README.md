@@ -29,7 +29,7 @@ swarmux init
 swarmux --output json schema
 swarmux --output json submit --json '{
   "title": "hello",
-  "repo": "demo",
+  "repo_ref": "demo",
   "repo_root": "/path/to/repo",
   "mode": "manual",
   "worktree": "/path/to/repo",

@@ -1,8 +1,10 @@
 use crate::config::AppConfig;
+use crate::id::IdGenerator;
 use crate::model::{EventRecord, SubmitPayload, TaskRecord, TaskState};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 pub struct Store {
@@ -33,10 +35,26 @@ impl Store {
 
     pub fn submit(&self, payload: SubmitPayload) -> Result<TaskRecord> {
         self.ensure_layout()?;
-        let task = TaskRecord::from_submit(payload, &self.config);
-        self.write_task(&task)?;
-        self.append_event(EventRecord::submitted(&task))?;
-        Ok(task)
+        let generator = IdGenerator::with_defaults();
+        let created_at = Utc::now();
+        let issue_count = self.task_count()?;
+
+        for offset in 0..16 {
+            let id = generator.generate(&payload, created_at, issue_count + offset, |candidate| {
+                self.task_path(candidate).exists()
+            });
+            let task = TaskRecord::from_submit_with_id(payload.clone(), &self.config, id);
+            match self.write_task_new(&task) {
+                Ok(()) => {
+                    self.append_event(EventRecord::submitted(&task))?;
+                    return Ok(task);
+                }
+                Err(error) if is_already_exists(&error) => continue,
+                Err(error) => return Err(error),
+            }
+        }
+
+        Err(anyhow!("failed to allocate unique task id"))
     }
 
     pub fn list(&self) -> Result<Vec<TaskRecord>> {
@@ -124,6 +142,28 @@ impl Store {
             .with_context(|| format!("failed to write task file: {}", path.display()))
     }
 
+    fn write_task_new(&self, task: &TaskRecord) -> Result<()> {
+        let path = self.task_path(&task.id);
+        let raw = serde_json::to_vec_pretty(task)?;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, &raw))
+            .with_context(|| format!("failed to create task file: {}", path.display()))
+    }
+
+    fn task_count(&self) -> Result<usize> {
+        let mut count = 0usize;
+        for entry in fs::read_dir(self.config.tasks_dir())? {
+            let path = entry?.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     fn append_event(&self, event: EventRecord) -> Result<()> {
         let line = serde_json::to_string(&event)?;
         let mut content = fs::read_to_string(self.config.events_file())?;
@@ -132,6 +172,14 @@ impl Store {
         fs::write(self.config.events_file(), content)?;
         Ok(())
     }
+}
+
+fn is_already_exists(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        source
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|inner| inner.kind() == ErrorKind::AlreadyExists)
+    })
 }
 
 pub fn require_task_id(id: &str) -> Result<()> {

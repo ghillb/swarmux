@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use regex::Regex;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -37,7 +38,7 @@ fn submit_show_list_done_and_fail_round_trip_through_files_backend() {
 
     let payload_one = r#"{
       "title":"First task",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-one",
@@ -47,7 +48,7 @@ fn submit_show_list_done_and_fail_round_trip_through_files_backend() {
 
     let payload_two = r#"{
       "title":"Second task",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-two",
@@ -65,6 +66,9 @@ fn submit_show_list_done_and_fail_round_trip_through_files_backend() {
     .clone();
     let first: Value = serde_json::from_slice(&first).unwrap();
     let first_id = first["id"].as_str().unwrap().to_owned();
+    let id_pattern = Regex::new(r"^[0-9a-z]{3,12}$").unwrap();
+    assert!(id_pattern.is_match(&first_id));
+    assert!(!first_id.starts_with("swx-"));
 
     let second = run(
         &home,
@@ -76,6 +80,8 @@ fn submit_show_list_done_and_fail_round_trip_through_files_backend() {
     .clone();
     let second: Value = serde_json::from_slice(&second).unwrap();
     let second_id = second["id"].as_str().unwrap().to_owned();
+    assert!(id_pattern.is_match(&second_id));
+    assert!(!second_id.starts_with("swx-"));
 
     let list = run(&home, &["--output", "json", "list"])
         .success()
@@ -133,7 +139,7 @@ fn show_and_list_support_field_projection() {
 
     let payload = r#"{
       "title":"Projected task",
-      "repo":"core",
+      "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
       "worktree":"/tmp/swarmux-project",
