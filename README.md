@@ -40,6 +40,16 @@ swarmux --output json list
 swarmux popup --once
 ```
 
+tmux-friendly dispatch without JSON quoting:
+
+```bash
+swarmux --output json dispatch \
+  --title "hello" \
+  --repo-ref demo \
+  --repo-root /path/to/repo \
+  -- codex exec -m gpt-5.3-codex "echo hi from task"
+```
+
 ## How it works
 
 `swarmux` stores task state in either `files` (default) or `beads` (`SWARMUX_BACKEND=beads`), but runtime execution is always tmux-driven and command-agnostic. The `command` array from `submit` is executed as-is inside a tmux session.

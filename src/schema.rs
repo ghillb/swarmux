@@ -45,6 +45,12 @@ pub fn schema_json() -> Value {
                 "supports_dry_run": true
             },
             {
+                "name": "dispatch",
+                "json_input": false,
+                "mutating": true,
+                "supports_dry_run": true
+            },
+            {
                 "name": "start",
                 "json_input": false,
                 "mutating": true

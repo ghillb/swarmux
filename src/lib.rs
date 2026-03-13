@@ -11,11 +11,11 @@ mod validation;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use cli::{
-    Cli, Commands, FailArgs, IdArgs, ListArgs, LogsArgs, NotifyArgs, OutputFormat, PruneArgs,
-    SendArgs, ShowArgs, StateArgs, StopArgs, SubmitArgs, WatchArgs,
+    Cli, Commands, DispatchArgs, DispatchMode, FailArgs, IdArgs, ListArgs, LogsArgs, NotifyArgs,
+    OutputFormat, PruneArgs, SendArgs, ShowArgs, StateArgs, StopArgs, SubmitArgs, WatchArgs,
 };
 use config::AppConfig;
-use model::{DryRunSubmitResponse, SubmitPayload, TaskRecord, TaskState};
+use model::{DryRunSubmitResponse, SubmitPayload, TaskMode, TaskRecord, TaskState};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -55,6 +55,7 @@ pub fn run() -> Result<()> {
         Commands::Submit(args) => run_submit(&store, cli.output, args),
         Commands::Start(args) => run_start(&store, cli.output, args),
         Commands::Delegate(args) => run_delegate(&store, cli.output, args),
+        Commands::Dispatch(args) => run_dispatch(&store, cli.output, args),
         Commands::List(args) => run_list(&store, cli.output, args),
         Commands::Show(args) => run_show(&store, cli.output, args),
         Commands::Logs(args) => run_logs(&store, cli.output, args),
@@ -116,47 +117,13 @@ fn run_start(store: &Store, output: OutputFormat, args: IdArgs) -> Result<()> {
 
 fn run_delegate(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result<()> {
     let payload = read_submit_payload(&args)?;
-    validation::validate_submit_payload(&payload)?;
+    run_delegate_payload(store, output, payload, args.dry_run, "delegate")
+}
 
-    if args.dry_run {
-        return emit(
-            &output,
-            &json!({
-                "ok": true,
-                "dry_run": true,
-                "command": "delegate",
-                "task": payload,
-            }),
-        );
-    }
-
-    let submitted = match store.paths().backend {
-        config::BackendKind::Files => store.submit(payload)?,
-        config::BackendKind::Beads => beads::submit(store.paths(), payload)?,
-    };
-    let previous = submitted.state.clone();
-    let started = runtime::start_task(&submitted)?;
-    match store.paths().backend {
-        config::BackendKind::Files => {
-            store.overwrite(&started, previous, started.reason.clone())?
-        }
-        config::BackendKind::Beads => {
-            beads::set_state(
-                store.paths(),
-                &started.id,
-                started.state.clone(),
-                started.reason.clone(),
-                started.last_error.clone(),
-            )?;
-        }
-    }
-    emit(
-        &output,
-        &json!({
-            "submitted": submitted,
-            "started": started,
-        }),
-    )
+fn run_dispatch(store: &Store, output: OutputFormat, args: DispatchArgs) -> Result<()> {
+    let dry_run = args.dry_run;
+    let payload = submit_payload_from_dispatch(args);
+    run_delegate_payload(store, output, payload, dry_run, "dispatch")
 }
 
 fn read_submit_payload(args: &SubmitArgs) -> Result<SubmitPayload> {
@@ -431,6 +398,92 @@ fn list_tasks(store: &Store) -> Result<Vec<model::TaskRecord>> {
     match store.paths().backend {
         config::BackendKind::Files => store.list(),
         config::BackendKind::Beads => beads::list(store.paths()),
+    }
+}
+
+fn run_delegate_payload(
+    store: &Store,
+    output: OutputFormat,
+    payload: SubmitPayload,
+    dry_run: bool,
+    command_name: &str,
+) -> Result<()> {
+    validation::validate_submit_payload(&payload)?;
+
+    if dry_run {
+        return emit(
+            &output,
+            &json!({
+                "ok": true,
+                "dry_run": true,
+                "command": command_name,
+                "task": payload,
+            }),
+        );
+    }
+
+    let submitted = match store.paths().backend {
+        config::BackendKind::Files => store.submit(payload)?,
+        config::BackendKind::Beads => beads::submit(store.paths(), payload)?,
+    };
+    let previous = submitted.state.clone();
+    let started = runtime::start_task(&submitted)?;
+    match store.paths().backend {
+        config::BackendKind::Files => {
+            store.overwrite(&started, previous, started.reason.clone())?
+        }
+        config::BackendKind::Beads => {
+            beads::set_state(
+                store.paths(),
+                &started.id,
+                started.state.clone(),
+                started.reason.clone(),
+                started.last_error.clone(),
+            )?;
+        }
+    }
+    emit(
+        &output,
+        &json!({
+            "submitted": submitted,
+            "started": started,
+        }),
+    )
+}
+
+fn submit_payload_from_dispatch(args: DispatchArgs) -> SubmitPayload {
+    let title = args
+        .title
+        .unwrap_or_else(|| default_dispatch_title(&args.command));
+    SubmitPayload {
+        title,
+        repo_ref: args.repo_ref,
+        repo_root: args.repo_root,
+        mode: match args.mode {
+            DispatchMode::Auto => TaskMode::Auto,
+            DispatchMode::Manual => TaskMode::Manual,
+        },
+        worktree: args.worktree,
+        session: args.session,
+        command: args.command,
+        priority: args.priority,
+        external_ref: args.external_ref,
+    }
+}
+
+fn default_dispatch_title(command: &[String]) -> String {
+    let joined = command.join(" ");
+    let trimmed = joined.trim();
+    if trimmed.is_empty() {
+        return "dispatch task".to_string();
+    }
+
+    let max_chars = 80usize;
+    let truncated = trimmed.chars().take(max_chars).collect::<String>();
+    if trimmed.chars().count() > max_chars {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 

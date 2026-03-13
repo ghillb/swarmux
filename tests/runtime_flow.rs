@@ -198,6 +198,76 @@ fn delegate_auto_mode_creates_worktree_and_prune_removes_it() {
 }
 
 #[test]
+fn dispatch_auto_mode_creates_worktree_from_flags() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let dispatched = harness
+        .run(&[
+            "--output",
+            "json",
+            "dispatch",
+            "--title",
+            "Dispatch task",
+            "--repo-ref",
+            "core",
+            "--repo-root",
+            &harness.fake_root.path().join("repo").display().to_string(),
+            "--",
+            "echo",
+            "dispatch",
+        ])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
+    let started = &dispatched["started"];
+
+    assert_eq!(started["title"], "Dispatch task");
+    assert_eq!(started["state"], "running");
+    assert!(
+        started["session"]
+            .as_str()
+            .unwrap()
+            .starts_with("swx-core-")
+    );
+
+    let git_log = fs::read_to_string(harness.fake_root.path().join("git.log")).unwrap();
+    assert!(git_log.contains("worktree add -B"));
+}
+
+#[test]
+fn dispatch_defaults_title_from_command_when_omitted() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let dispatched = harness
+        .run(&[
+            "--output",
+            "json",
+            "dispatch",
+            "--repo-ref",
+            "core",
+            "--repo-root",
+            &harness.fake_root.path().join("repo").display().to_string(),
+            "--",
+            "codex",
+            "exec",
+            "fix tests",
+        ])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
+    let started = &dispatched["started"];
+
+    assert_eq!(started["title"], "codex exec fix tests");
+    assert_eq!(started["state"], "running");
+}
+
+#[test]
 fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
     let harness = Harness::new();
     harness.run(&["init"]).success();

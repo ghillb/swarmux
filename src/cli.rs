@@ -27,6 +27,7 @@ pub enum Commands {
     Submit(SubmitArgs),
     Start(IdArgs),
     Delegate(SubmitArgs),
+    Dispatch(DispatchArgs),
     List(ListArgs),
     Show(ShowArgs),
     Logs(LogsArgs),
@@ -52,6 +53,45 @@ pub struct SubmitArgs {
 
     #[arg(long, conflicts_with = "json")]
     pub json_file: Option<PathBuf>,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct DispatchArgs {
+    #[arg(long)]
+    pub dry_run: bool,
+
+    #[arg(long)]
+    pub title: Option<String>,
+
+    #[arg(long)]
+    pub repo_ref: String,
+
+    #[arg(long)]
+    pub repo_root: String,
+
+    #[arg(long, value_enum, default_value = "auto")]
+    pub mode: DispatchMode,
+
+    #[arg(long)]
+    pub worktree: Option<String>,
+
+    #[arg(long)]
+    pub session: Option<String>,
+
+    #[arg(long)]
+    pub priority: Option<u8>,
+
+    #[arg(long)]
+    pub external_ref: Option<String>,
+
+    #[arg(last = true, required = true)]
+    pub command: Vec<String>,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum DispatchMode {
+    Auto,
+    Manual,
 }
 
 #[derive(Debug, clap::Args)]
