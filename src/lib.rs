@@ -15,7 +15,7 @@ use cli::{
     OutputFormat, PruneArgs, SendArgs, ShowArgs, StateArgs, StopArgs, SubmitArgs, WatchArgs,
 };
 use config::AppConfig;
-use model::{DryRunSubmitResponse, SubmitPayload, TaskMode, TaskRecord, TaskState};
+use model::{DryRunSubmitResponse, SubmitPayload, TaskMode, TaskOrigin, TaskRecord, TaskState};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -122,7 +122,7 @@ fn run_delegate(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result
 
 fn run_dispatch(store: &Store, output: OutputFormat, args: DispatchArgs) -> Result<()> {
     let dry_run = args.dry_run;
-    let payload = submit_payload_from_dispatch(args);
+    let payload = submit_payload_from_dispatch(args)?;
     run_delegate_payload(store, output, payload, dry_run, "dispatch")
 }
 
@@ -451,14 +451,32 @@ fn run_delegate_payload(
     )
 }
 
-fn submit_payload_from_dispatch(args: DispatchArgs) -> SubmitPayload {
+fn submit_payload_from_dispatch(args: DispatchArgs) -> Result<SubmitPayload> {
+    if args.connected {
+        return connected_submit_payload_from_dispatch(args);
+    }
+
+    if args.prompt.is_some() {
+        return Err(anyhow!("--prompt requires --connected"));
+    }
+    if args.pane_id.is_some() {
+        return Err(anyhow!("--pane-id requires --connected"));
+    }
+    if args.command.is_empty() {
+        return Err(anyhow!("dispatch requires a command after --"));
+    }
+
     let title = args
         .title
         .unwrap_or_else(|| default_dispatch_title(&args.command));
-    SubmitPayload {
+    Ok(SubmitPayload {
         title,
-        repo_ref: args.repo_ref,
-        repo_root: args.repo_root,
+        repo_ref: args
+            .repo_ref
+            .ok_or_else(|| anyhow!("dispatch requires --repo-ref"))?,
+        repo_root: args
+            .repo_root
+            .ok_or_else(|| anyhow!("dispatch requires --repo-root"))?,
         mode: match args.mode {
             DispatchMode::Auto => TaskMode::Auto,
             DispatchMode::Manual => TaskMode::Manual,
@@ -468,7 +486,8 @@ fn submit_payload_from_dispatch(args: DispatchArgs) -> SubmitPayload {
         command: args.command,
         priority: args.priority,
         external_ref: args.external_ref,
-    }
+        origin: None,
+    })
 }
 
 fn default_dispatch_title(command: &[String]) -> String {
@@ -485,6 +504,77 @@ fn default_dispatch_title(command: &[String]) -> String {
     } else {
         truncated
     }
+}
+
+fn connected_submit_payload_from_dispatch(args: DispatchArgs) -> Result<SubmitPayload> {
+    if matches!(args.mode, DispatchMode::Manual) {
+        return Err(anyhow!("--connected supports only --mode auto"));
+    }
+    if args.worktree.is_some() || args.session.is_some() {
+        return Err(anyhow!(
+            "--connected does not accept --worktree or --session"
+        ));
+    }
+    if args.repo_ref.is_some() || args.repo_root.is_some() {
+        return Err(anyhow!(
+            "--connected does not accept --repo-ref or --repo-root"
+        ));
+    }
+
+    let prompt = args
+        .prompt
+        .ok_or_else(|| anyhow!("--connected requires --prompt"))?;
+    if args.command.is_empty() {
+        return Err(anyhow!("--connected requires a command prefix after --"));
+    }
+
+    let pane = runtime::current_pane_context(args.pane_id.as_deref())?;
+    let repo_root = infer_repo_root(&pane.pane_current_path)?;
+    let repo_ref = infer_repo_ref(&repo_root);
+    let mut command = args.command;
+    command.push(prompt.clone());
+
+    Ok(SubmitPayload {
+        title: args.title.unwrap_or(prompt),
+        repo_ref,
+        repo_root,
+        mode: TaskMode::Auto,
+        worktree: None,
+        session: None,
+        command,
+        priority: args.priority,
+        external_ref: args.external_ref,
+        origin: Some(TaskOrigin {
+            pane_id: pane.pane_id,
+            session_name: pane.session_name,
+            window_id: pane.window_id,
+            window_name: pane.window_name,
+            pane_current_path: pane.pane_current_path,
+        }),
+    })
+}
+
+fn infer_repo_root(path: &str) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .args(["-C", path, "rev-parse", "--show-toplevel"])
+        .output()
+        .context("failed to run git rev-parse")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(anyhow!("connected dispatch requires a git repo: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn infer_repo_ref(repo_root: &str) -> String {
+    std::path::Path::new(repo_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("repo")
+        .to_string()
 }
 
 fn reconcile_store(store: &Store) -> Result<usize> {

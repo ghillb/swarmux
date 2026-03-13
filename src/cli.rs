@@ -64,13 +64,22 @@ pub struct DispatchArgs {
     pub title: Option<String>,
 
     #[arg(long)]
-    pub repo_ref: String,
+    pub repo_ref: Option<String>,
 
     #[arg(long)]
-    pub repo_root: String,
+    pub repo_root: Option<String>,
 
     #[arg(long, value_enum, default_value = "auto")]
     pub mode: DispatchMode,
+
+    #[arg(long)]
+    pub connected: bool,
+
+    #[arg(long)]
+    pub prompt: Option<String>,
+
+    #[arg(long)]
+    pub pane_id: Option<String>,
 
     #[arg(long)]
     pub worktree: Option<String>,
@@ -84,7 +93,7 @@ pub struct DispatchArgs {
     #[arg(long)]
     pub external_ref: Option<String>,
 
-    #[arg(last = true, required = true)]
+    #[arg(last = true)]
     pub command: Vec<String>,
 }
 

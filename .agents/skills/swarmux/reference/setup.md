@@ -10,19 +10,11 @@ bind -n F8 display-popup -T "Swarmux" -w 90% -h 80% -E "sh -lc 'swarmux popup --
 
 ## tmux task dispatch
 
-Use tmux for the prompt UI and `swarmux dispatch` for the task launch:
+Use tmux for the prompt UI and connected dispatch from the current pane:
 
 ```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --repo-ref core --repo-root /path/to/repo -- codex exec \"%1\"'"
+bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --prompt \"%1\" -- codex exec'"
 ```
-
-If you want the prompt text to also be the task title:
-
-```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --title \"%1\" --repo-ref core --repo-root /path/to/repo -- codex exec \"%1\"'"
-```
-
-Replace `core` and `/path/to/repo` with the repo you want this binding to target.
 
 ## tmux completion notifications
 

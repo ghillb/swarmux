@@ -158,6 +158,7 @@ mod tests {
             command: vec!["echo".to_string(), "ok".to_string()],
             priority: None,
             external_ref: None,
+            origin: None,
         }
     }
 

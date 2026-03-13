@@ -70,6 +70,34 @@ impl Harness {
         command.args(args);
         command.assert()
     }
+
+    fn run_in_tmux_pane(
+        &self,
+        pane_id: &str,
+        pane_path: &str,
+        args: &[&str],
+    ) -> assert_cmd::assert::Assert {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+        let path = format!(
+            "{}:{}",
+            self.bin.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+
+        command.env("SWARMUX_HOME", self.home.path());
+        command.env("SWARMUX_FAKE_TMUX_ROOT", self.fake_root.path());
+        command.env("SWARMUX_FAKE_GIT_ROOT", self.fake_root.path());
+        command.env(
+            "SWARMUX_FAKE_GIT_LOG",
+            self.fake_root.path().join("git.log"),
+        );
+        command.env("PATH", path);
+        command.env("TMUX", "/tmp/fake-tmux,123,0");
+        command.env("TMUX_PANE", pane_id);
+        command.env("SWARMUX_FAKE_TMUX_PANE_PATH", pane_path);
+        command.args(args);
+        command.assert()
+    }
 }
 
 #[test]
@@ -268,6 +296,49 @@ fn dispatch_defaults_title_from_command_when_omitted() {
 }
 
 #[test]
+fn dispatch_connected_infers_repo_and_origin_from_tmux_pane() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    let pane_path = repo_root.display().to_string();
+    let dispatched = harness
+        .run_in_tmux_pane(
+            "%42",
+            &pane_path,
+            &[
+                "--output",
+                "json",
+                "dispatch",
+                "--connected",
+                "--prompt",
+                "fix tests",
+                "--",
+                "codex",
+                "exec",
+            ],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
+    let started = &dispatched["started"];
+
+    assert_eq!(started["title"], "fix tests");
+    assert_eq!(started["repo_root"], repo_root.display().to_string());
+    assert_eq!(started["repo"], "repo");
+    assert_eq!(started["mode"], "auto");
+    assert_eq!(started["command"][0], "codex");
+    assert_eq!(started["command"][1], "exec");
+    assert_eq!(started["command"][2], "fix tests");
+    assert_eq!(started["origin"]["pane_id"], "%42");
+    assert_eq!(started["origin"]["pane_current_path"], pane_path);
+    assert_eq!(started["origin"]["session_name"], "origin-session");
+    assert_eq!(started["origin"]["window_name"], "origin-window");
+}
+
+#[test]
 fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
@@ -455,6 +526,19 @@ case "$cmd" in
     exit 1
     ;;
   display-message)
+    if [ "${{1:-}}" = "-p" ] && [ "${{2:-}}" = "-t" ]; then
+      target="$3"
+      format="${{4:-}}"
+      pane_path="${{SWARMUX_FAKE_TMUX_PANE_PATH:-$root/repo}}"
+      case "$format" in
+        '#{{session_name}}') printf 'origin-session\n' ;;
+        '#{{window_id}}') printf '@9\n' ;;
+        '#{{window_name}}') printf 'origin-window\n' ;;
+        '#{{pane_current_path}}') printf '%s\n' "$pane_path" ;;
+        *) echo "unexpected tmux format: $format" >&2; exit 1 ;;
+      esac
+      exit 0
+    fi
     printf '%s\n' "${{1:-}}" >> "$root/display.log"
     ;;
   *)

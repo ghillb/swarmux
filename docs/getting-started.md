@@ -53,6 +53,15 @@ swarmux --output json dispatch \
   -- codex exec -m gpt-5.3-codex "echo hi from task"
 ```
 
+## Connected dispatch from the current tmux pane
+
+```bash
+swarmux --output json dispatch \
+  --connected \
+  --prompt "fix tests" \
+  -- codex exec
+```
+
 ## tmux popup mapping
 
 Use this mapping to open a snapshot popup and keep it open until Enter:
@@ -72,7 +81,7 @@ tmux source-file ~/.config/tmux/tmux.conf
 Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 
 ```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --title \"%1\" --repo-ref demo --repo-root /path/to/repo -- codex exec \"%1\"'"
+bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --prompt \"%1\" -- codex exec'"
 bind-key W run-shell -b 'swarmux --output json watch --tmux >/dev/null 2>&1'
 bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
 ```

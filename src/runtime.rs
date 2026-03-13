@@ -15,6 +15,14 @@ pub struct PruneOutcome {
     pub session_killed: usize,
 }
 
+pub struct PaneContext {
+    pub pane_id: String,
+    pub session_name: String,
+    pub window_id: String,
+    pub window_name: String,
+    pub pane_current_path: String,
+}
+
 pub fn start_task(task: &TaskRecord) -> Result<TaskRecord> {
     if let (Some(branch), Some(worktree)) = (&task.branch, &task.worktree) {
         create_worktree(&task.repo_root, branch, worktree)?;
@@ -48,6 +56,22 @@ pub fn send_input(task: &TaskRecord, input: &str) -> Result<()> {
 
 pub fn display_message(message: &str) -> Result<()> {
     run_tmux_dynamic(&["display-message", message]).map(|_| ())
+}
+
+pub fn current_pane_context(target: Option<&str>) -> Result<PaneContext> {
+    let pane_id = match target {
+        Some(value) => value.to_string(),
+        None => std::env::var("TMUX_PANE")
+            .context("connected dispatch requires TMUX_PANE or --pane-id")?,
+    };
+
+    Ok(PaneContext {
+        session_name: tmux_format(&pane_id, "#{session_name}")?,
+        window_id: tmux_format(&pane_id, "#{window_id}")?,
+        window_name: tmux_format(&pane_id, "#{window_name}")?,
+        pane_current_path: tmux_format(&pane_id, "#{pane_current_path}")?,
+        pane_id,
+    })
 }
 
 pub fn interrupt_task(task: &TaskRecord) -> Result<()> {
@@ -244,6 +268,12 @@ fn has_tmux_session(session: &str) -> Result<bool> {
     }
 
     Err(anyhow!("tmux has-session failed"))
+}
+
+fn tmux_format(target: &str, format: &str) -> Result<String> {
+    Ok(run_tmux(["display-message", "-p", "-t", target, format])?
+        .trim()
+        .to_string())
 }
 
 fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String> {

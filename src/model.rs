@@ -24,6 +24,8 @@ pub struct SubmitPayload {
     pub priority: Option<u8>,
     #[serde(default)]
     pub external_ref: Option<String>,
+    #[serde(default)]
+    pub origin: Option<TaskOrigin>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,6 +66,7 @@ pub struct TaskRecord {
     pub command: Vec<String>,
     pub priority: u8,
     pub external_ref: Option<String>,
+    pub origin: Option<TaskOrigin>,
     pub state: TaskState,
     pub reason: String,
     pub last_error: Option<String>,
@@ -111,6 +114,7 @@ impl TaskRecord {
             command: payload.command,
             priority: payload.priority.unwrap_or(2),
             external_ref: payload.external_ref,
+            origin: payload.origin,
             state: TaskState::Queued,
             reason: "submitted".to_string(),
             last_error: None,
@@ -120,6 +124,15 @@ impl TaskRecord {
             finished_at: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskOrigin {
+    pub pane_id: String,
+    pub session_name: String,
+    pub window_id: String,
+    pub window_name: String,
+    pub pane_current_path: String,
 }
 
 fn repo_slug(repo: &str) -> String {

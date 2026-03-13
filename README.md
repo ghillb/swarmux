@@ -50,6 +50,15 @@ swarmux --output json dispatch \
   -- codex exec -m gpt-5.3-codex "echo hi from task"
 ```
 
+Connected dispatch from the current tmux pane:
+
+```bash
+swarmux --output json dispatch \
+  --connected \
+  --prompt "fix tests" \
+  -- codex exec
+```
+
 ## How it works
 
 `swarmux` stores task state in either `files` (default) or `beads` (`SWARMUX_BACKEND=beads`), but runtime execution is always tmux-driven and command-agnostic. The `command` array from `submit` is executed as-is inside a tmux session.
