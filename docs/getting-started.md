@@ -62,6 +62,20 @@ swarmux --output json dispatch \
   -- codex exec
 ```
 
+To make the command prefix optional, add a config file:
+
+```toml
+# $SWARMUX_HOME/config.toml
+[connected]
+command = ["codex", "exec"]
+```
+
+Then connected dispatch can omit the command prefix:
+
+```bash
+swarmux --output json dispatch --connected --prompt "fix tests"
+```
+
 ## tmux popup mapping
 
 Use this mapping to open a snapshot popup and keep it open until Enter:

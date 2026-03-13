@@ -339,6 +339,43 @@ fn dispatch_connected_infers_repo_and_origin_from_tmux_pane() {
 }
 
 #[test]
+fn dispatch_connected_uses_configured_default_command() {
+    let harness = Harness::new();
+    fs::write(
+        harness.home.path().join("config.toml"),
+        "[connected]\ncommand = [\"claude\", \"-p\"]\n",
+    )
+    .unwrap();
+    harness.run(&["init"]).success();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    let pane_path = repo_root.display().to_string();
+    let dispatched = harness
+        .run_in_tmux_pane(
+            "%43",
+            &pane_path,
+            &[
+                "--output",
+                "json",
+                "dispatch",
+                "--connected",
+                "--prompt",
+                "summarize repo",
+            ],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
+    let started = &dispatched["started"];
+
+    assert_eq!(started["command"][0], "claude");
+    assert_eq!(started["command"][1], "-p");
+    assert_eq!(started["command"][2], "summarize repo");
+}
+
+#[test]
 fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
     let harness = Harness::new();
     harness.run(&["init"]).success();

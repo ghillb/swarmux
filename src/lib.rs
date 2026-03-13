@@ -35,7 +35,7 @@ struct NotifyOutcome {
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    let config = AppConfig::from_env();
+    let config = AppConfig::from_env()?;
     let store = Store::new(config);
 
     match cli.command {
@@ -122,7 +122,7 @@ fn run_delegate(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result
 
 fn run_dispatch(store: &Store, output: OutputFormat, args: DispatchArgs) -> Result<()> {
     let dry_run = args.dry_run;
-    let payload = submit_payload_from_dispatch(args)?;
+    let payload = submit_payload_from_dispatch(store.paths(), args)?;
     run_delegate_payload(store, output, payload, dry_run, "dispatch")
 }
 
@@ -451,9 +451,9 @@ fn run_delegate_payload(
     )
 }
 
-fn submit_payload_from_dispatch(args: DispatchArgs) -> Result<SubmitPayload> {
+fn submit_payload_from_dispatch(config: &AppConfig, args: DispatchArgs) -> Result<SubmitPayload> {
     if args.connected {
-        return connected_submit_payload_from_dispatch(args);
+        return connected_submit_payload_from_dispatch(config, args);
     }
 
     if args.prompt.is_some() {
@@ -506,7 +506,10 @@ fn default_dispatch_title(command: &[String]) -> String {
     }
 }
 
-fn connected_submit_payload_from_dispatch(args: DispatchArgs) -> Result<SubmitPayload> {
+fn connected_submit_payload_from_dispatch(
+    config: &AppConfig,
+    args: DispatchArgs,
+) -> Result<SubmitPayload> {
     if matches!(args.mode, DispatchMode::Manual) {
         return Err(anyhow!("--connected supports only --mode auto"));
     }
@@ -524,14 +527,20 @@ fn connected_submit_payload_from_dispatch(args: DispatchArgs) -> Result<SubmitPa
     let prompt = args
         .prompt
         .ok_or_else(|| anyhow!("--connected requires --prompt"))?;
-    if args.command.is_empty() {
-        return Err(anyhow!("--connected requires a command prefix after --"));
-    }
+    let mut command = if args.command.is_empty() {
+        if config.settings.connected.command.is_empty() {
+            return Err(anyhow!(
+                "--connected requires a command prefix after -- or [connected].command in config.toml"
+            ));
+        }
+        config.settings.connected.command.clone()
+    } else {
+        args.command
+    };
 
     let pane = runtime::current_pane_context(args.pane_id.as_deref())?;
     let repo_root = infer_repo_root(&pane.pane_current_path)?;
     let repo_ref = infer_repo_ref(&repo_root);
-    let mut command = args.command;
     command.push(prompt.clone());
 
     Ok(SubmitPayload {

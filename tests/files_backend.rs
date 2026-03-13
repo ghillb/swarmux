@@ -24,7 +24,8 @@ fn init_creates_state_layout_and_paths_reports_it() {
         ))
         .stdout(predicate::str::contains("\"tasks_dir\""))
         .stdout(predicate::str::contains("\"events_file\""))
-        .stdout(predicate::str::contains("\"notify_file\""));
+        .stdout(predicate::str::contains("\"notify_file\""))
+        .stdout(predicate::str::contains("\"config_file\""));
 
     assert!(home.path().join("tasks").is_dir());
     assert!(home.path().join("logs").is_dir());

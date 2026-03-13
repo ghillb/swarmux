@@ -16,6 +16,19 @@ Use tmux for the prompt UI and connected dispatch from the current pane:
 bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --prompt \"%1\" -- codex exec'"
 ```
 
+To avoid repeating the command prefix, set a default in `$SWARMUX_HOME/config.toml`:
+
+```toml
+[connected]
+command = ["codex", "exec"]
+```
+
+Then the binding can be:
+
+```tmux
+bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --prompt \"%1\"'"
+```
+
 ## tmux completion notifications
 
 Run a foreground watcher in the background from tmux:

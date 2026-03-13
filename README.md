@@ -59,6 +59,18 @@ swarmux --output json dispatch \
   -- codex exec
 ```
 
+Configured default connected command:
+
+```toml
+# ~/.local/state/swarmux/config.toml
+[connected]
+command = ["codex", "exec"]
+```
+
+```bash
+swarmux --output json dispatch --connected --prompt "fix tests"
+```
+
 ## How it works
 
 `swarmux` stores task state in either `files` (default) or `beads` (`SWARMUX_BACKEND=beads`), but runtime execution is always tmux-driven and command-agnostic. The `command` array from `submit` is executed as-is inside a tmux session.
