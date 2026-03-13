@@ -11,13 +11,27 @@ mod validation;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use cli::{
-    Cli, Commands, FailArgs, IdArgs, ListArgs, LogsArgs, OutputFormat, PruneArgs, SendArgs,
-    ShowArgs, StateArgs, StopArgs, SubmitArgs,
+    Cli, Commands, FailArgs, IdArgs, ListArgs, LogsArgs, NotifyArgs, OutputFormat, PruneArgs,
+    SendArgs, ShowArgs, StateArgs, StopArgs, SubmitArgs, WatchArgs,
 };
 use config::AppConfig;
-use model::{DryRunSubmitResponse, SubmitPayload, TaskState};
+use model::{DryRunSubmitResponse, SubmitPayload, TaskRecord, TaskState};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::thread;
+use std::time::Duration;
 use store::{Store, require_task_id};
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct NotifyState {
+    delivered: BTreeMap<String, String>,
+}
+
+struct NotifyOutcome {
+    reconciled: usize,
+    notifications: Vec<TaskRecord>,
+}
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -44,6 +58,8 @@ pub fn run() -> Result<()> {
         Commands::List(args) => run_list(&store, cli.output, args),
         Commands::Show(args) => run_show(&store, cli.output, args),
         Commands::Logs(args) => run_logs(&store, cli.output, args),
+        Commands::Notify(args) => run_notify(&store, cli.output, args),
+        Commands::Watch(args) => run_watch(&store, cli.output, args),
         Commands::Send(args) => run_send(&store, cli.output, args),
         Commands::Attach(args) => run_attach(&store, args),
         Commands::Stop(args) => run_stop(&store, cli.output, args),
@@ -204,6 +220,29 @@ fn run_logs(store: &Store, output: OutputFormat, args: LogsArgs) -> Result<()> {
     )
 }
 
+fn run_notify(store: &Store, output: OutputFormat, args: NotifyArgs) -> Result<()> {
+    emit(
+        &output,
+        &notify_value(&collect_notifications(store, args.tmux)?),
+    )
+}
+
+fn run_watch(store: &Store, output: OutputFormat, args: WatchArgs) -> Result<()> {
+    let mut iterations = 0u64;
+
+    loop {
+        let outcome = collect_notifications(store, args.tmux)?;
+        emit_watch_tick(&output, &outcome)?;
+
+        iterations += 1;
+        if args.max_iterations.is_some_and(|max| iterations >= max) {
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(args.interval_ms));
+    }
+}
+
 fn run_send(store: &Store, output: OutputFormat, args: SendArgs) -> Result<()> {
     require_task_id(&args.id)?;
     let task = get_task(store, &args.id)?;
@@ -246,30 +285,8 @@ fn run_stop(store: &Store, output: OutputFormat, args: StopArgs) -> Result<()> {
 }
 
 fn run_reconcile(store: &Store, output: OutputFormat) -> Result<()> {
-    let mut tasks = list_tasks(store)?;
-    let outcome = runtime::reconcile(
-        &mut tasks,
-        &store.paths().locks_dir().join("reconcile.lock"),
-    )?;
-    for task in &tasks {
-        let current = get_task(store, &task.id)?;
-        if current.updated_at != task.updated_at {
-            match store.paths().backend {
-                config::BackendKind::Files => {
-                    store.overwrite(task, current.state, task.reason.clone())?
-                }
-                config::BackendKind::Beads => beads::set_state(
-                    store.paths(),
-                    &task.id,
-                    task.state.clone(),
-                    task.reason.clone(),
-                    task.last_error.clone(),
-                )
-                .map(|_| ())?,
-            };
-        }
-    }
-    emit(&output, &json!({"updated": outcome.updated}))
+    let updated = reconcile_store(store)?;
+    emit(&output, &json!({"updated": updated}))
 }
 
 fn run_prune(store: &Store, output: OutputFormat, args: PruneArgs) -> Result<()> {
@@ -414,6 +431,158 @@ fn list_tasks(store: &Store) -> Result<Vec<model::TaskRecord>> {
     match store.paths().backend {
         config::BackendKind::Files => store.list(),
         config::BackendKind::Beads => beads::list(store.paths()),
+    }
+}
+
+fn reconcile_store(store: &Store) -> Result<usize> {
+    let mut tasks = list_tasks(store)?;
+    let outcome = runtime::reconcile(
+        &mut tasks,
+        &store.paths().locks_dir().join("reconcile.lock"),
+    )?;
+    for task in &tasks {
+        let current = get_task(store, &task.id)?;
+        if current.updated_at != task.updated_at {
+            match store.paths().backend {
+                config::BackendKind::Files => {
+                    store.overwrite(task, current.state, task.reason.clone())?
+                }
+                config::BackendKind::Beads => beads::set_state(
+                    store.paths(),
+                    &task.id,
+                    task.state.clone(),
+                    task.reason.clone(),
+                    task.last_error.clone(),
+                )
+                .map(|_| ())?,
+            };
+        }
+    }
+    Ok(outcome.updated)
+}
+
+fn load_notify_state(path: &Path) -> Result<NotifyState> {
+    if !path.exists() {
+        return Ok(NotifyState::default());
+    }
+
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read notify state: {}", path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse notify state: {}", path.display()))
+}
+
+fn save_notify_state(path: &Path, state: &NotifyState) -> Result<()> {
+    let raw = serde_json::to_vec_pretty(state)?;
+    std::fs::write(path, raw)
+        .with_context(|| format!("failed to write notify state: {}", path.display()))
+}
+
+fn notification_signature(task: &TaskRecord) -> String {
+    task.finished_at.unwrap_or(task.updated_at).to_rfc3339()
+}
+
+fn notification_message(task: &TaskRecord) -> String {
+    format!(
+        "swarmux {} {} {}",
+        task.id,
+        state_label(&task.state),
+        task.title
+    )
+}
+
+fn notification_value(task: &TaskRecord) -> Value {
+    json!({
+        "id": task.id,
+        "title": task.title,
+        "state": state_label(&task.state),
+        "reason": task.reason,
+        "finished_at": task.finished_at,
+        "message": notification_message(task),
+    })
+}
+
+fn notify_value(outcome: &NotifyOutcome) -> Value {
+    json!({
+        "reconciled": {
+            "updated": outcome.reconciled,
+        },
+        "count": outcome.notifications.len(),
+        "notifications": outcome
+            .notifications
+            .iter()
+            .map(notification_value)
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn collect_notifications(store: &Store, tmux: bool) -> Result<NotifyOutcome> {
+    let reconciled = reconcile_store(store)?;
+    let tasks = list_tasks(store)?;
+    let notify_path = store.paths().notify_file();
+    let mut state = load_notify_state(&notify_path)?;
+
+    let notifications = tasks
+        .iter()
+        .filter(|task| task.state.is_terminal())
+        .filter(|task| state.delivered.get(&task.id) != Some(&notification_signature(task)))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if tmux {
+        if std::env::var_os("TMUX").is_none() {
+            return Err(anyhow!("notify/watch --tmux requires running inside tmux"));
+        }
+
+        for task in &notifications {
+            runtime::display_message(&notification_message(task))?;
+        }
+    }
+
+    for task in &notifications {
+        state
+            .delivered
+            .insert(task.id.clone(), notification_signature(task));
+    }
+    save_notify_state(&notify_path, &state)?;
+
+    Ok(NotifyOutcome {
+        reconciled,
+        notifications,
+    })
+}
+
+fn emit_watch_tick(output: &OutputFormat, outcome: &NotifyOutcome) -> Result<()> {
+    if outcome.reconciled == 0 && outcome.notifications.is_empty() {
+        return Ok(());
+    }
+
+    match output {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string(&notify_value(outcome))?);
+        }
+        OutputFormat::Text => {
+            if outcome.reconciled > 0 {
+                println!("reconciled updated={}", outcome.reconciled);
+            }
+            for task in &outcome.notifications {
+                println!("{}", notification_message(task));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn state_label(state: &TaskState) -> &'static str {
+    match state {
+        TaskState::Queued => "queued",
+        TaskState::Dispatching => "dispatching",
+        TaskState::Running => "running",
+        TaskState::WaitingInput => "waiting_input",
+        TaskState::Succeeded => "succeeded",
+        TaskState::Failed => "failed",
+        TaskState::Canceled => "canceled",
     }
 }
 

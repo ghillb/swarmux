@@ -21,6 +21,7 @@ pub struct PathsInfo {
     pub logs_dir: String,
     pub locks_dir: String,
     pub events_file: String,
+    pub notify_file: String,
 }
 
 impl AppConfig {
@@ -57,6 +58,10 @@ impl AppConfig {
         self.home.join("events.jsonl")
     }
 
+    pub fn notify_file(&self) -> PathBuf {
+        self.home.join("notify.json")
+    }
+
     pub fn paths_info(&self) -> PathsInfo {
         PathsInfo {
             home: self.home.display().to_string(),
@@ -68,6 +73,7 @@ impl AppConfig {
             logs_dir: self.logs_dir().display().to_string(),
             locks_dir: self.locks_dir().display().to_string(),
             events_file: self.events_file().display().to_string(),
+            notify_file: self.notify_file().display().to_string(),
         }
     }
 }

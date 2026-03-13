@@ -57,11 +57,22 @@ Reload tmux:
 tmux source-file ~/.config/tmux/tmux.conf
 ```
 
+## tmux delegation and notifications
+
+Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
+
+```tmux
+bind-key W run-shell -b 'swarmux --output json watch --tmux >/dev/null 2>&1'
+bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
+```
+
 ## Operator commands
 
 ```bash
 swarmux --output json show <id>
 swarmux --output json logs <id> --raw
 swarmux --output json reconcile
+swarmux --output json notify --tmux
+swarmux --output json watch --tmux
 swarmux --output json prune --apply
 ```

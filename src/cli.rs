@@ -30,6 +30,8 @@ pub enum Commands {
     List(ListArgs),
     Show(ShowArgs),
     Logs(LogsArgs),
+    Notify(NotifyArgs),
+    Watch(WatchArgs),
     Send(SendArgs),
     Attach(IdArgs),
     Stop(StopArgs),
@@ -80,6 +82,24 @@ pub struct LogsArgs {
 
     #[arg(long)]
     pub raw: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct NotifyArgs {
+    #[arg(long)]
+    pub tmux: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct WatchArgs {
+    #[arg(long)]
+    pub tmux: bool,
+
+    #[arg(long, default_value_t = 2_000)]
+    pub interval_ms: u64,
+
+    #[arg(long)]
+    pub max_iterations: Option<u64>,
 }
 
 #[derive(Debug, clap::Args)]

@@ -59,3 +59,5 @@ flowchart TD
     L --> M[reconcile updates task state]
     M --> D
 ```
+
+For completion notifications, use `swarmux notify --tmux` for one-shot delivery or `swarmux watch --tmux` for a foreground polling loop that reconciles and emits `tmux display-message` when tasks enter terminal states.

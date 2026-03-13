@@ -10,6 +10,8 @@ fn schema_is_available_as_machine_readable_json() {
         .success()
         .stdout(predicate::str::contains("\"commands\""))
         .stdout(predicate::str::contains("\"submit\""))
+        .stdout(predicate::str::contains("\"notify\""))
+        .stdout(predicate::str::contains("\"watch\""))
         .stdout(predicate::str::contains("\"json_input\""));
 }
 

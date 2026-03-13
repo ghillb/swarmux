@@ -49,6 +49,27 @@ impl Harness {
         command.args(args);
         command.assert()
     }
+
+    fn run_in_tmux(&self, args: &[&str]) -> assert_cmd::assert::Assert {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+        let path = format!(
+            "{}:{}",
+            self.bin.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+
+        command.env("SWARMUX_HOME", self.home.path());
+        command.env("SWARMUX_FAKE_TMUX_ROOT", self.fake_root.path());
+        command.env("SWARMUX_FAKE_GIT_ROOT", self.fake_root.path());
+        command.env(
+            "SWARMUX_FAKE_GIT_LOG",
+            self.fake_root.path().join("git.log"),
+        );
+        command.env("PATH", path);
+        command.env("TMUX", "/tmp/fake-tmux,123,0");
+        command.args(args);
+        command.assert()
+    }
 }
 
 #[test]
@@ -176,6 +197,122 @@ fn delegate_auto_mode_creates_worktree_and_prune_removes_it() {
     assert!(git_log.contains("branch -D"));
 }
 
+#[test]
+fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let payload = format!(
+        "{{\"title\":\"Notify task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-notify\",\"session\":\"swarmux-notify\",\"command\":[\"echo\",\"notify\"]}}",
+        harness.fake_root.path().join("repo").display()
+    );
+
+    let submitted = harness
+        .run(&["--output", "json", "submit", "--json", &payload])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let submitted: Value = serde_json::from_slice(&submitted).unwrap();
+    let task_id = submitted["id"].as_str().unwrap().to_owned();
+
+    harness
+        .run(&["--output", "json", "start", &task_id])
+        .success()
+        .stdout(predicate::str::contains("\"state\":\"running\""));
+
+    fs::remove_file(
+        harness
+            .fake_root
+            .path()
+            .join("sessions")
+            .join("swarmux-notify.pane"),
+    )
+    .unwrap();
+
+    let notified = harness
+        .run_in_tmux(&["--output", "json", "notify", "--tmux"])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let notified: Value = serde_json::from_slice(&notified).unwrap();
+    assert_eq!(notified["reconciled"]["updated"], 1);
+    assert_eq!(notified["count"], 1);
+    assert_eq!(notified["notifications"][0]["id"], task_id);
+    assert_eq!(notified["notifications"][0]["state"], "succeeded");
+
+    let display_log = fs::read_to_string(harness.fake_root.path().join("display.log")).unwrap();
+    assert!(display_log.contains("swarmux"));
+    assert!(display_log.contains(&task_id));
+    assert!(display_log.contains("Notify task"));
+
+    harness
+        .run_in_tmux(&["--output", "json", "notify", "--tmux"])
+        .success()
+        .stdout(predicate::str::contains("\"count\":0"));
+
+    let display_log = fs::read_to_string(harness.fake_root.path().join("display.log")).unwrap();
+    assert_eq!(display_log.lines().count(), 1);
+}
+
+#[test]
+fn watch_can_emit_tmux_messages_and_exit_after_max_iterations() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let payload = format!(
+        "{{\"title\":\"Watch task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-watch\",\"session\":\"swarmux-watch\",\"command\":[\"echo\",\"watch\"]}}",
+        harness.fake_root.path().join("repo").display()
+    );
+
+    let submitted = harness
+        .run(&["--output", "json", "submit", "--json", &payload])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let submitted: Value = serde_json::from_slice(&submitted).unwrap();
+    let task_id = submitted["id"].as_str().unwrap().to_owned();
+
+    harness
+        .run(&["--output", "json", "start", &task_id])
+        .success()
+        .stdout(predicate::str::contains("\"state\":\"running\""));
+
+    fs::remove_file(
+        harness
+            .fake_root
+            .path()
+            .join("sessions")
+            .join("swarmux-watch.pane"),
+    )
+    .unwrap();
+
+    let watched = harness
+        .run_in_tmux(&[
+            "--output",
+            "json",
+            "watch",
+            "--tmux",
+            "--interval-ms",
+            "1",
+            "--max-iterations",
+            "1",
+        ])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let watched: Value = serde_json::from_slice(&watched).unwrap();
+    assert_eq!(watched["reconciled"]["updated"], 1);
+    assert_eq!(watched["count"], 1);
+    assert_eq!(watched["notifications"][0]["id"], task_id);
+
+    let display_log = fs::read_to_string(harness.fake_root.path().join("display.log")).unwrap();
+    assert!(display_log.contains("Watch task"));
+}
+
 fn write_fake_tmux(path: PathBuf, root: &Path) {
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -246,6 +383,9 @@ case "$cmd" in
       exit 0
     fi
     exit 1
+    ;;
+  display-message)
+    printf '%s\n' "${{1:-}}" >> "$root/display.log"
     ;;
   *)
     echo "unexpected tmux command: $cmd" >&2

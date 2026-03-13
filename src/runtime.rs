@@ -46,6 +46,10 @@ pub fn send_input(task: &TaskRecord, input: &str) -> Result<()> {
     run_tmux(["send-keys", "-t", session, input, "C-m"]).map(|_| ())
 }
 
+pub fn display_message(message: &str) -> Result<()> {
+    run_tmux_dynamic(&["display-message", message]).map(|_| ())
+}
+
 pub fn interrupt_task(task: &TaskRecord) -> Result<()> {
     let session = task
         .session
