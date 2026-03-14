@@ -114,22 +114,12 @@ pub fn read_logs(task: &TaskRecord, raw: bool, lines: usize) -> Result<String> {
 
 pub fn output_excerpt(task: &TaskRecord, max_chars: usize) -> Result<Option<String>> {
     let text = tail_file(&task.log_file, 50)?;
-    let visible = sanitize_logs(&text)
-        .lines()
-        .map(strip_log_timestamp)
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    Ok(output_excerpt_from_text(&text, max_chars))
+}
 
-    if visible.is_empty() {
-        return Ok(None);
-    }
-
-    let chars = visible.chars().collect::<Vec<_>>();
-    let start = chars.len().saturating_sub(max_chars);
-    let excerpt = chars[start..].iter().collect::<String>();
-    Ok(Some(format!("...{excerpt}")))
+pub fn token_count(task: &TaskRecord) -> Result<Option<String>> {
+    let text = tail_file(&task.log_file, 50)?;
+    Ok(token_count_from_text(&text))
 }
 
 pub fn reconcile(
@@ -379,12 +369,98 @@ fn sanitize_logs(text: &str) -> String {
     text.lines()
         .filter(|line| !line.contains(EXIT_MARKER))
         .map(|line| {
-            line.chars()
+            strip_ansi_sequences(line)
+                .chars()
                 .filter(|ch| !ch.is_control() || *ch == '\n' || *ch == '\t')
                 .collect::<String>()
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn output_excerpt_from_text(text: &str, max_chars: usize) -> Option<String> {
+    let visible_lines = visible_log_lines(text);
+    let mut fallback = None;
+
+    for (index, visible) in visible_lines.iter().enumerate().rev() {
+        if fallback.is_none() {
+            fallback = Some(visible.clone());
+        }
+
+        if is_numeric_summary_line(visible)
+            && index > 0
+            && visible_lines[index - 1].eq_ignore_ascii_case("tokens used")
+        {
+            continue;
+        }
+
+        if visible.eq_ignore_ascii_case("tokens used") {
+            continue;
+        }
+
+        return Some(truncate_excerpt(visible, max_chars));
+    }
+
+    fallback
+        .as_deref()
+        .map(|line| truncate_excerpt(line, max_chars))
+}
+
+fn token_count_from_text(text: &str) -> Option<String> {
+    let visible_lines = visible_log_lines(text);
+
+    visible_lines
+        .windows(2)
+        .filter(|window| {
+            window[0].eq_ignore_ascii_case("tokens used") && is_numeric_summary_line(&window[1])
+        })
+        .map(|window| window[1].to_string())
+        .next_back()
+}
+
+fn truncate_excerpt(text: &str, max_chars: usize) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    let start = chars.len().saturating_sub(max_chars);
+    let excerpt = chars[start..].iter().collect::<String>();
+    format!("...{excerpt}")
+}
+
+fn is_numeric_summary_line(line: &str) -> bool {
+    line.chars()
+        .all(|ch| ch.is_ascii_digit() || ch == ',' || ch == '.')
+}
+
+fn visible_log_lines(text: &str) -> Vec<String> {
+    sanitize_logs(text)
+        .lines()
+        .map(strip_log_timestamp)
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn strip_ansi_sequences(line: &str) -> String {
+    let mut cleaned = String::new();
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\u{1b}' {
+            cleaned.push(ch);
+            continue;
+        }
+
+        if chars.peek() == Some(&'[') {
+            chars.next();
+            for next in chars.by_ref() {
+                if ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
+        }
+    }
+
+    cleaned
 }
 
 fn append_log_line(path: &str, line: &str) -> Result<()> {
@@ -552,5 +628,38 @@ struct LockGuard {
 impl Drop for LockGuard {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{output_excerpt_from_text, strip_ansi_sequences, token_count_from_text};
+
+    #[test]
+    fn strip_ansi_sequences_removes_color_codes() {
+        assert_eq!(strip_ansi_sequences("\u{1b}[35mhello\u{1b}[0m"), "hello");
+    }
+
+    #[test]
+    fn output_excerpt_skips_tokens_used_footer() {
+        let text = "\
+2026-03-14T08:21:32Z \u{1b}[35mHi\u{1b}[0m\n\
+2026-03-14T08:21:33Z tokens used\n\
+2026-03-14T08:21:33Z 7,892\n";
+
+        assert_eq!(
+            output_excerpt_from_text(text, 25),
+            Some("...Hi".to_string())
+        );
+    }
+
+    #[test]
+    fn token_count_extracts_last_tokens_used_footer() {
+        let text = "\
+2026-03-14T08:21:32Z Hi\n\
+2026-03-14T08:21:33Z tokens used\n\
+2026-03-14T08:21:33Z 7,892\n";
+
+        assert_eq!(token_count_from_text(text), Some("7,892".to_string()));
     }
 }

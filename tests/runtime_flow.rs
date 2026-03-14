@@ -709,9 +709,56 @@ fn watch_text_mode_can_print_output_excerpt_for_completed_tasks() {
     harness
         .run(&["watch", "--interval-ms", "1", "--max-iterations", "1"])
         .success()
-        .stdout(predicate::str::contains("swarmux"))
+        .stdout(predicate::str::contains("time"))
         .stdout(predicate::str::contains("Watch tail task"))
         .stdout(predicate::str::contains("..."));
+}
+
+#[test]
+fn watch_text_mode_can_show_optional_tokens_column() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let payload = format!(
+        "{{\"title\":\"Watch tokens task\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"/tmp/swarmux-watch-tokens\",\"session\":\"swarmux-watch-tokens\",\"command\":[\"echo\",\"watch-tokens\"]}}",
+        harness.fake_root.path().join("repo").display()
+    );
+
+    let submitted = harness
+        .run(&["--output", "json", "submit", "--json", &payload])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let submitted: Value = serde_json::from_slice(&submitted).unwrap();
+    let task_id = submitted["id"].as_str().unwrap().to_owned();
+
+    harness
+        .run(&["--output", "json", "start", &task_id])
+        .success()
+        .stdout(predicate::str::contains("\"state\":\"running\""));
+
+    fs::remove_file(
+        harness
+            .fake_root
+            .path()
+            .join("sessions")
+            .join("swarmux-watch-tokens.pane"),
+    )
+    .unwrap();
+
+    harness
+        .run(&[
+            "watch",
+            "--interval-ms",
+            "1",
+            "--max-iterations",
+            "1",
+            "--show-tokens",
+        ])
+        .success()
+        .stdout(predicate::str::contains("tokens"))
+        .stdout(predicate::str::contains(&task_id));
 }
 
 fn write_fake_tmux(path: PathBuf, root: &Path) {

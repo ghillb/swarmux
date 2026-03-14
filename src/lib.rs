@@ -33,6 +33,7 @@ struct NotifyState {
 struct Notification {
     task: TaskRecord,
     output_excerpt: Option<String>,
+    token_count: Option<String>,
 }
 
 struct NotifyOutcome {
@@ -195,18 +196,19 @@ fn run_logs(store: &Store, output: OutputFormat, args: LogsArgs) -> Result<()> {
 }
 
 fn run_notify(store: &Store, output: OutputFormat, args: NotifyArgs) -> Result<()> {
-    emit(
-        &output,
-        &notify_value(&collect_notifications(store, args.tmux)?),
-    )
+    let outcome = collect_notifications(store, args.tmux, args.show_tokens)?;
+    match output {
+        OutputFormat::Json => emit(&output, &notify_value(&outcome)),
+        OutputFormat::Text => emit_watch_tick(&output, &outcome, args.show_tokens),
+    }
 }
 
 fn run_watch(store: &Store, output: OutputFormat, args: WatchArgs) -> Result<()> {
     let mut iterations = 0u64;
 
     loop {
-        let outcome = collect_notifications(store, args.tmux)?;
-        emit_watch_tick(&output, &outcome)?;
+        let outcome = collect_notifications(store, args.tmux, args.show_tokens)?;
+        emit_watch_tick(&output, &outcome, args.show_tokens)?;
 
         iterations += 1;
         if args.max_iterations.is_some_and(|max| iterations >= max) {
@@ -741,6 +743,7 @@ fn notification_value(notification: &Notification) -> Value {
         "finished_at": task.finished_at,
         "message": notification_message(task),
         "output_excerpt": notification.output_excerpt,
+        "token_count": notification.token_count,
     })
 }
 
@@ -758,7 +761,7 @@ fn notify_value(outcome: &NotifyOutcome) -> Value {
     })
 }
 
-fn collect_notifications(store: &Store, tmux: bool) -> Result<NotifyOutcome> {
+fn collect_notifications(store: &Store, tmux: bool, show_tokens: bool) -> Result<NotifyOutcome> {
     let reconciled = reconcile_store(store)?;
     let tasks = list_tasks(store)?;
     let notify_path = store.paths().notify_file();
@@ -772,6 +775,11 @@ fn collect_notifications(store: &Store, tmux: bool) -> Result<NotifyOutcome> {
             Ok(Notification {
                 task: task.clone(),
                 output_excerpt: runtime::output_excerpt(task, 25)?,
+                token_count: if show_tokens {
+                    runtime::token_count(task)?
+                } else {
+                    None
+                },
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -800,7 +808,11 @@ fn collect_notifications(store: &Store, tmux: bool) -> Result<NotifyOutcome> {
     })
 }
 
-fn emit_watch_tick(output: &OutputFormat, outcome: &NotifyOutcome) -> Result<()> {
+fn emit_watch_tick(
+    output: &OutputFormat,
+    outcome: &NotifyOutcome,
+    show_tokens: bool,
+) -> Result<()> {
     if outcome.reconciled == 0 && outcome.notifications.is_empty() {
         return Ok(());
     }
@@ -813,21 +825,74 @@ fn emit_watch_tick(output: &OutputFormat, outcome: &NotifyOutcome) -> Result<()>
             if outcome.reconciled > 0 {
                 println!("reconciled updated={}", outcome.reconciled);
             }
+            if outcome.notifications.is_empty() {
+                return Ok(());
+            }
+
+            println!("{}", watch_header(show_tokens));
             for notification in &outcome.notifications {
-                if let Some(output_excerpt) = &notification.output_excerpt {
-                    println!(
-                        "{} {}",
-                        notification_message(&notification.task),
-                        output_excerpt
-                    );
-                } else {
-                    println!("{}", notification_message(&notification.task));
-                }
+                println!("{}", watch_row(notification, show_tokens));
             }
         }
     }
 
     Ok(())
+}
+
+fn watch_header(show_tokens: bool) -> String {
+    if show_tokens {
+        format!(
+            "{:<20}  {:<4}  {:<12}  {:>8}  {:<28}  {}",
+            "time", "id", "state", "tokens", "title", "excerpt"
+        )
+    } else {
+        format!(
+            "{:<20}  {:<4}  {:<12}  {:<28}  {}",
+            "time", "id", "state", "title", "excerpt"
+        )
+    }
+}
+
+fn watch_row(notification: &Notification, show_tokens: bool) -> String {
+    let time = notification
+        .task
+        .finished_at
+        .unwrap_or(notification.task.updated_at)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let state = state_label(&notification.task.state);
+    let title = truncate_cell(&notification.task.title, 28);
+    let excerpt = notification.output_excerpt.as_deref().unwrap_or("");
+
+    if show_tokens {
+        let tokens = notification.token_count.as_deref().unwrap_or("");
+        format!(
+            "{:<20}  {:<4}  {:<12}  {:>8}  {:<28}  {}",
+            time, notification.task.id, state, tokens, title, excerpt
+        )
+    } else {
+        format!(
+            "{:<20}  {:<4}  {:<12}  {:<28}  {}",
+            time, notification.task.id, state, title, excerpt
+        )
+    }
+}
+
+fn truncate_cell(value: &str, width: usize) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= width {
+        return value.to_string();
+    }
+    if width <= 3 {
+        return chars.into_iter().take(width).collect();
+    }
+
+    let mut truncated = chars
+        .into_iter()
+        .take(width.saturating_sub(3))
+        .collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
 
 fn state_label(state: &TaskState) -> &'static str {

@@ -154,12 +154,18 @@ pub struct LogsArgs {
 pub struct NotifyArgs {
     #[arg(long)]
     pub tmux: bool,
+
+    #[arg(long)]
+    pub show_tokens: bool,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct WatchArgs {
     #[arg(long)]
     pub tmux: bool,
+
+    #[arg(long)]
+    pub show_tokens: bool,
 
     #[arg(long, default_value_t = 2_000)]
     pub interval_ms: u64,
