@@ -74,6 +74,23 @@ command = ["codex", "exec"]
 swarmux --output json dispatch --connected --prompt "fix tests"
 ```
 
+Actual TUI runtime in a task session:
+
+```bash
+swarmux --output json submit --json '{
+  "title": "tui task",
+  "repo_ref": "demo",
+  "repo_root": "/path/to/repo",
+  "mode": "manual",
+  "runtime": "tui",
+  "worktree": "/path/to/repo",
+  "session": "swarmux-demo-tui",
+  "command": ["my-tui-agent", "fix tests"]
+}'
+swarmux --output json start <id>
+swarmux attach <id>
+```
+
 Configured named agent runners:
 
 ```toml
@@ -99,7 +116,13 @@ tmux binding for connected dispatch:
 bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --pane-id \"#{pane_id}\" --prompt \"%1\"'"
 ```
 
-`headless` remains the default runtime when no override is configured. `mirrored` keeps the agent process visible in the task session and mirrors pane output into logs. A true app-level TUI mode is separate and planned later; for example `codex exec` in `mirrored` mode is still the CLI runner, not the full `codex` TUI.
+`headless` remains the default runtime when no override is configured.
+`mirrored` keeps a non-TUI CLI runner visible in the task session and mirrors pane output into logs.
+`tui` runs a full-screen interactive program in its own tmux session, still detached from `start`/`delegate` so agents get a clean JSON response and operators choose when to `attach`.
+
+Connected dispatch still appends `--prompt` as the trailing command argument for every runtime. Use `tui` there only with commands that naturally accept that trailing prompt input.
+
+`swarmux` does not create popups or windows for TUI tasks. Keep that presentation in your tmux config; for example, wrap `swarmux attach <id>` or tmux session switching in your own bindings.
 
 ## How it works
 

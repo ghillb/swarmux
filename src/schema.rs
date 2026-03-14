@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 pub fn schema_json() -> Value {
+    let runtime_values = json!(["headless", "mirrored", "tui"]);
     json!({
         "name": "swarmux",
         "agent_first": true,
@@ -30,6 +31,8 @@ pub fn schema_json() -> Value {
                 "json_input": true,
                 "mutating": true,
                 "supports_dry_run": true,
+                "runtime_field": "runtime",
+                "runtime_values": runtime_values,
                 "required_payload_fields": [
                     "title",
                     "repo_ref",
@@ -42,13 +45,17 @@ pub fn schema_json() -> Value {
                 "name": "delegate",
                 "json_input": true,
                 "mutating": true,
-                "supports_dry_run": true
+                "supports_dry_run": true,
+                "runtime_field": "runtime",
+                "runtime_values": runtime_values
             },
             {
                 "name": "dispatch",
                 "json_input": false,
                 "mutating": true,
-                "supports_dry_run": true
+                "supports_dry_run": true,
+                "runtime_flag": "--runtime",
+                "runtime_values": runtime_values
             },
             {
                 "name": "start",

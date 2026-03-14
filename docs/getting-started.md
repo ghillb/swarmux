@@ -78,6 +78,23 @@ Then connected dispatch can omit the command prefix:
 swarmux --output json dispatch --connected --prompt "fix tests"
 ```
 
+Manual TUI task:
+
+```bash
+swarmux --output json submit --json '{
+  "title": "tui task",
+  "repo_ref": "demo",
+  "repo_root": "/path/to/repo",
+  "mode": "manual",
+  "runtime": "tui",
+  "worktree": "/path/to/repo",
+  "session": "swarmux-demo-tui",
+  "command": ["my-tui-agent", "fix tests"]
+}'
+swarmux --output json start <id>
+swarmux attach <id>
+```
+
 You can also configure named agent runners:
 
 ```toml
@@ -104,9 +121,14 @@ Runtime choices:
 ```text
 headless  logs-first detached runner
 mirrored  visible task session with pane output mirrored into logs
+tui       full-screen interactive app in its own tmux session
 ```
 
-A true app-level TUI mode is separate and planned later. `codex exec` in `mirrored` mode is still the CLI runner shown in a tmux session, not the full `codex` TUI.
+`headless` stays the default when no runtime override is configured.
+`mirrored` is for visible non-TUI CLI runners.
+`tui` is for full-screen interactive programs started in detached tmux task sessions; use `swarmux attach <id>` when you want to enter them.
+
+Connected dispatch still appends `--prompt` as the trailing command argument for every runtime, including `tui`. Use `tui` there only with commands that support that calling convention.
 
 ## tmux popup mapping
 
@@ -131,6 +153,8 @@ bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch -
 bind-key W run-shell -b 'swarmux --output json watch --tmux >/dev/null 2>&1'
 bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
 ```
+
+Keep popup/window presentation in tmux itself. `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
 
 `watch`/`notify` show a compact completion excerpt inline:
 

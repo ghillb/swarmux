@@ -34,4 +34,8 @@ All CLI implementation and CLI UX decisions in this repo must follow these rules
 - Validate inputs defensively (agents hallucinate malformed values).
 - Support dry-run/preview for mutating operations whenever feasible.
 
+8. Runtime semantics
+- `tui` is a first-class runtime beside `headless` and `mirrored`.
+- Runtime controls task/session execution only. Popup/window presentation belongs in tmux bindings or operator workflow, not in the core CLI contract.
+
 If there is a conflict with existing CLI patterns, align with this rule set.

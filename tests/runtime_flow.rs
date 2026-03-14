@@ -379,6 +379,49 @@ fn dispatch_connected_mirrored_flag_sets_runtime() {
 }
 
 #[test]
+fn dispatch_connected_tui_flag_sets_runtime_and_attachs_session() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    let pane_path = repo_root.display().to_string();
+    let dispatched = harness
+        .run_in_tmux_pane(
+            "%54",
+            &pane_path,
+            &[
+                "--output",
+                "json",
+                "dispatch",
+                "--connected",
+                "--runtime",
+                "tui",
+                "--prompt",
+                "inspect tui",
+                "--",
+                "codex",
+            ],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
+    let started = &dispatched["started"];
+    let task_id = started["id"].as_str().unwrap().to_owned();
+    let log_file = started["log_file"].as_str().unwrap();
+
+    assert_eq!(started["runtime"], "tui");
+    assert_eq!(started["state"], "running");
+    assert_eq!(started["command"][0], "codex");
+    assert_eq!(started["command"][1], "inspect tui");
+    assert!(Path::new(&format!("{log_file}.tui.run.sh")).exists());
+    assert!(Path::new(&format!("{log_file}.tui.pipe.sh")).exists());
+
+    harness.run(&["attach", &task_id]).success();
+}
+
+#[test]
 fn dispatch_connected_uses_configured_default_command() {
     let harness = Harness::new();
     fs::create_dir_all(harness.home.path().join("config-home").join("swarmux")).unwrap();
@@ -520,7 +563,7 @@ fn dispatch_connected_uses_configured_default_runtime() {
             .join("config-home")
             .join("swarmux")
             .join("config.toml"),
-        "[connected]\nruntime = \"mirrored\"\ncommand = [\"codex\", \"exec\"]\n",
+        "[connected]\nruntime = \"tui\"\ncommand = [\"codex\"]\n",
     )
     .unwrap();
     harness.run(&["init"]).success();
@@ -537,7 +580,7 @@ fn dispatch_connected_uses_configured_default_runtime() {
                 "dispatch",
                 "--connected",
                 "--prompt",
-                "configured mirrored",
+                "configured tui",
             ],
         )
         .success()
@@ -547,8 +590,9 @@ fn dispatch_connected_uses_configured_default_runtime() {
     let dispatched: Value = serde_json::from_slice(&dispatched).unwrap();
     let started = &dispatched["started"];
 
-    assert_eq!(started["runtime"], "mirrored");
+    assert_eq!(started["runtime"], "tui");
     assert_eq!(started["command"][0], "codex");
+    assert_eq!(started["command"][1], "configured tui");
 }
 
 #[test]

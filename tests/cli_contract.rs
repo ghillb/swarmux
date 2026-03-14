@@ -13,7 +13,10 @@ fn schema_is_available_as_machine_readable_json() {
         .stdout(predicate::str::contains("\"submit\""))
         .stdout(predicate::str::contains("\"notify\""))
         .stdout(predicate::str::contains("\"watch\""))
-        .stdout(predicate::str::contains("\"json_input\""));
+        .stdout(predicate::str::contains("\"json_input\""))
+        .stdout(predicate::str::contains(
+            "\"runtime_values\":[\"headless\",\"mirrored\",\"tui\"]",
+        ));
 }
 
 #[test]
@@ -23,6 +26,7 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
       "repo_ref":"core",
       "repo_root":"/tmp/core",
       "mode":"manual",
+      "runtime":"tui",
       "worktree":"/tmp/swarmux-worktree",
       "session":"swarmux-task-1",
       "command":["codex","exec","Implement acceptance criteria"]
@@ -37,6 +41,7 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
         .stdout(predicate::str::contains(
             "\"title\":\"Implement acceptance criteria\"",
         ))
+        .stdout(predicate::str::contains("\"runtime\":\"tui\""))
         .stdout(predicate::str::contains("\"session\":\"swarmux-task-1\""));
 }
 

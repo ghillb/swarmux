@@ -60,6 +60,7 @@ pub enum TaskRuntime {
     #[default]
     Headless,
     Mirrored,
+    Tui,
 }
 
 impl AppConfig {

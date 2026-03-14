@@ -246,10 +246,23 @@ fn spawn_tmux_session(
             spawn_headless_tmux_session(session, workdir, &script_path, log_file, command)
         }
         TaskRuntime::Mirrored => {
-            write_launch_script(&script_path, mirrored_launch_script())?;
+            write_launch_script(&script_path, interactive_launch_script())?;
             let pipe_script_path = launch_script_path(log_file, runtime, "pipe");
             write_launch_script(&pipe_script_path, pipe_launch_script())?;
-            spawn_mirrored_tmux_session(
+            spawn_piped_tmux_session(
+                session,
+                workdir,
+                &script_path,
+                &pipe_script_path,
+                log_file,
+                command,
+            )
+        }
+        TaskRuntime::Tui => {
+            write_launch_script(&script_path, interactive_launch_script())?;
+            let pipe_script_path = launch_script_path(log_file, runtime, "pipe");
+            write_launch_script(&pipe_script_path, pipe_launch_script())?;
+            spawn_piped_tmux_session(
                 session,
                 workdir,
                 &script_path,
@@ -285,7 +298,7 @@ fn spawn_headless_tmux_session(
     run_tmux_dynamic(&args_ref).map(|_| ())
 }
 
-fn spawn_mirrored_tmux_session(
+fn spawn_piped_tmux_session(
     session: &str,
     workdir: &str,
     script_path: &str,
@@ -543,6 +556,7 @@ fn launch_script_path(log_file: &str, runtime: TaskRuntime, kind: &str) -> Strin
     let suffix = match runtime {
         TaskRuntime::Headless => "headless",
         TaskRuntime::Mirrored => "mirrored",
+        TaskRuntime::Tui => "tui",
     };
     format!("{log_file}.{suffix}.{kind}.sh")
 }
@@ -586,7 +600,7 @@ exit "$code"
 "#
 }
 
-fn mirrored_launch_script() -> &'static str {
+fn interactive_launch_script() -> &'static str {
     r#"#!/bin/sh
 set -u
 log_file="$1"
