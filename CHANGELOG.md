@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/ghillb/swarmux/compare/v0.1.2...v0.1.3) - 2026-03-14
+
+### Added
+
+- *(runtime)* add connected dispatch and mirrored sessions
+
+### Other
+
+- *(swux)* update overview and connected dispatch docs
+- *(index)* escape angle brackets
+- *(release-playbook)* add preflight checks
+
 ## [0.1.2](https://github.com/ghillb/swarmux/compare/v0.1.1...v0.1.2) - 2026-03-13
 
 ### Added
