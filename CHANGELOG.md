@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/ghillb/swarmux/compare/v0.1.3...v0.1.4) - 2026-03-15
+
+### Added
+
+- *(runtime)* add tui task runtime and docs
+- *(overview)* reuse tabular task output
+- *(watch)* add tabular completion output
+- *(overview)* add --scope filter to overview command
+
 ## [0.1.3](https://github.com/ghillb/swarmux/compare/v0.1.2...v0.1.3) - 2026-03-14
 
 ### Added
