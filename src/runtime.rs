@@ -4,8 +4,10 @@ use anyhow::{Context, Result, anyhow};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::process::Command;
+use std::time::Duration;
 
 const EXIT_MARKER: &str = "__SWARMUX_EXIT_CODE__=";
+const RECONCILE_LOCK_STALE_AFTER: Duration = Duration::from_secs(30 * 60);
 
 pub struct ReconcileOutcome {
     pub updated: usize,
@@ -623,16 +625,46 @@ done
 }
 
 fn acquire_lock(path: &std::path::Path) -> Result<LockGuard> {
-    let file = OpenOptions::new().write(true).create_new(true).open(path);
-    match file {
-        Ok(_) => Ok(LockGuard {
-            path: path.to_path_buf(),
-        }),
+    acquire_lock_with_stale_after(path, RECONCILE_LOCK_STALE_AFTER)
+}
+
+fn acquire_lock_with_stale_after(
+    path: &std::path::Path,
+    stale_after: Duration,
+) -> Result<LockGuard> {
+    match create_lock(path) {
+        Ok(lock) => Ok(lock),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            Err(anyhow!("reconcile lock already held"))
+            if !lock_is_stale(path, stale_after)? {
+                return Err(anyhow!("reconcile lock already held"));
+            }
+
+            fs::remove_file(path)
+                .with_context(|| format!("failed to remove stale lock: {}", path.display()))?;
+            create_lock(path).map_err(Into::into)
         }
         Err(error) => Err(error.into()),
     }
+}
+
+fn create_lock(path: &std::path::Path) -> std::io::Result<LockGuard> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    use std::io::Write;
+    writeln!(file, "pid={}", std::process::id())?;
+    writeln!(file, "created_at={}", chrono::Utc::now().to_rfc3339())?;
+    Ok(LockGuard {
+        path: path.to_path_buf(),
+    })
+}
+
+fn lock_is_stale(path: &std::path::Path, stale_after: Duration) -> Result<bool> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("failed to stat lock file: {}", path.display()))?;
+    let modified = metadata
+        .modified()
+        .with_context(|| format!("failed to read lock mtime: {}", path.display()))?;
+    let age = modified.elapsed().unwrap_or_default();
+    Ok(age > stale_after)
 }
 
 struct LockGuard {
@@ -647,7 +679,13 @@ impl Drop for LockGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::{output_excerpt_from_text, strip_ansi_sequences, token_count_from_text};
+    use super::{
+        acquire_lock_with_stale_after, output_excerpt_from_text, strip_ansi_sequences,
+        token_count_from_text,
+    };
+    use std::thread;
+    use std::time::Duration;
+    use tempfile::tempdir;
 
     #[test]
     fn strip_ansi_sequences_removes_color_codes() {
@@ -675,5 +713,31 @@ mod tests {
 2026-03-14T08:21:33Z 7,892\n";
 
         assert_eq!(token_count_from_text(text), Some("7,892".to_string()));
+    }
+
+    #[test]
+    fn acquire_lock_rejects_active_lock() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reconcile.lock");
+        let _lock = acquire_lock_with_stale_after(&path, Duration::from_secs(60)).unwrap();
+
+        let error = acquire_lock_with_stale_after(&path, Duration::from_secs(60))
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("reconcile lock already held"));
+    }
+
+    #[test]
+    fn acquire_lock_reclaims_stale_lock() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("reconcile.lock");
+        {
+            let _lock = acquire_lock_with_stale_after(&path, Duration::from_secs(60)).unwrap();
+        }
+        std::fs::write(&path, "stale\n").unwrap();
+        thread::sleep(Duration::from_millis(20));
+
+        let lock = acquire_lock_with_stale_after(&path, Duration::from_millis(1)).unwrap();
+        drop(lock);
     }
 }
