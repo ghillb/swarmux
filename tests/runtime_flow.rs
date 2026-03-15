@@ -661,7 +661,7 @@ fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
 }
 
 #[test]
-fn watch_can_emit_tmux_messages_and_exit_after_max_iterations() {
+fn watch_reconciles_scoped_task_and_emits_matched_json() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
 
@@ -693,32 +693,25 @@ fn watch_can_emit_tmux_messages_and_exit_after_max_iterations() {
     )
     .unwrap();
 
-    let watched = harness
-        .run_in_tmux(&[
+    harness
+        .run(&[
             "--output",
             "json",
             "watch",
-            "--tmux",
+            &task_id,
             "--interval-ms",
             "1",
-            "--max-iterations",
-            "1",
+            "--timeout-ms",
+            "100",
         ])
         .success()
-        .get_output()
-        .stdout
-        .clone();
-    let watched: Value = serde_json::from_slice(&watched).unwrap();
-    assert_eq!(watched["reconciled"]["updated"], 1);
-    assert_eq!(watched["count"], 1);
-    assert_eq!(watched["notifications"][0]["id"], task_id);
-
-    let display_log = fs::read_to_string(harness.fake_root.path().join("display.log")).unwrap();
-    assert!(display_log.contains("Watch task"));
+        .stdout(predicate::str::contains("\"type\":\"matched\""))
+        .stdout(predicate::str::contains(&task_id))
+        .stdout(predicate::str::contains("\"state\":\"succeeded\""));
 }
 
 #[test]
-fn watch_text_mode_can_print_output_excerpt_for_completed_tasks() {
+fn watch_text_mode_returns_the_matched_task() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
 
@@ -751,15 +744,21 @@ fn watch_text_mode_can_print_output_excerpt_for_completed_tasks() {
     .unwrap();
 
     harness
-        .run(&["watch", "--interval-ms", "1", "--max-iterations", "1"])
+        .run(&[
+            "watch",
+            &task_id,
+            "--interval-ms",
+            "1",
+            "--timeout-ms",
+            "100",
+        ])
         .success()
-        .stdout(predicate::str::contains("time"))
-        .stdout(predicate::str::contains("Watch tail task"))
-        .stdout(predicate::str::contains("..."));
+        .stdout(predicate::str::contains("\"title\": \"Watch tail task\""))
+        .stdout(predicate::str::contains("\"state\": \"succeeded\""));
 }
 
 #[test]
-fn watch_text_mode_can_show_optional_tokens_column() {
+fn wait_reconciles_scoped_task_and_returns_json() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
 
@@ -793,16 +792,20 @@ fn watch_text_mode_can_show_optional_tokens_column() {
 
     harness
         .run(&[
-            "watch",
+            "--output",
+            "json",
+            "wait",
+            &task_id,
+            "--states",
+            "succeeded",
             "--interval-ms",
             "1",
-            "--max-iterations",
-            "1",
-            "--show-tokens",
+            "--timeout-ms",
+            "100",
         ])
         .success()
-        .stdout(predicate::str::contains("tokens"))
-        .stdout(predicate::str::contains(&task_id));
+        .stdout(predicate::str::contains(&task_id))
+        .stdout(predicate::str::contains("\"state\":\"succeeded\""));
 }
 
 fn write_fake_tmux(path: PathBuf, root: &Path) {
