@@ -21,6 +21,18 @@ cargo install --path .
 
 If you use the optional beads-rust backend and only have `br` installed, add a `bd` shim.
 
+To expose the official `swarmux` skill to agents that load global skills from
+`~/.agents/skills`, place the skill file there:
+
+```bash
+mkdir -p ~/.agents/skills/swarmux
+# download or copy .agents/skills/swarmux/SKILL.md into:
+~/.agents/skills/swarmux/SKILL.md
+```
+
+If your agent runtime uses a different global skills path, place the same
+directory there instead.
+
 ## Quick start
 
 ```bash
@@ -124,6 +136,20 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 `swarmux` does not create popups or windows for TUI tasks. Keep that presentation in your tmux config; for example, wrap `swarmux attach <id>` or tmux session switching in your own bindings.
 
+Canonical state configuration can also live in `config.toml`:
+
+```toml
+# ~/.config/swarmux/config.toml
+home = "/home/you/.local/state/swarmux"
+backend = "files" # or "beads"
+```
+
+Environment variables still override config values:
+
+- `SWARMUX_HOME`
+- `SWARMUX_BACKEND`
+- `SWARMUX_CONFIG_HOME`
+
 ## How it works
 
 `swarmux` stores task state in either `files` (default) or `beads` (`SWARMUX_BACKEND=beads`), but runtime execution is always tmux-driven and command-agnostic. The `command` array from `submit` is executed as-is inside a tmux session.
@@ -144,9 +170,22 @@ flowchart TD
     M --> D
 ```
 
-For completion notifications, use `swarmux notify --tmux` for one-shot delivery or `swarmux watch --tmux` for a foreground polling loop that reconciles and emits `tmux display-message` when tasks enter terminal states.
+For task-scoped waiting, use `swarmux wait <id...>` to block until one watched task reaches a target state. Use `swarmux watch <id...>` for a foreground task-scoped poll stream with log previews. Keep `swarmux notify --tmux` for global terminal notifications via `tmux display-message`.
 
-`watch`/`notify` also include a compact completion excerpt from the task output:
+Task-scoped waiting:
+
+```bash
+swarmux --output json wait <id> --states succeeded,failed --timeout-ms 600000
+swarmux --output json watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
+```
+
+PR or external linkage can be updated after creation:
+
+```bash
+swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
+```
+
+`watch`/`notify` include compact task output excerpts:
 
 ```text
 swarmux 4rh succeeded what is the time currently ...current time is 23:14:05

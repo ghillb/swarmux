@@ -19,6 +19,18 @@ cargo install --path .
 
 If using the optional beads backend, ensure `bd` is available on `PATH`.
 
+If your agent runtime loads global skills from `~/.agents/skills`, place the
+official `swarmux` skill there:
+
+```bash
+mkdir -p ~/.agents/skills/swarmux
+# download or copy .agents/skills/swarmux/SKILL.md into:
+~/.agents/skills/swarmux/SKILL.md
+```
+
+If your runtime uses a different global skills directory, place the same
+directory there instead.
+
 ## Initialize and inspect schema
 
 ```bash
@@ -67,6 +79,9 @@ To make the command prefix optional, add a config file:
 
 ```toml
 # $XDG_CONFIG_HOME/swarmux/config.toml
+home = "/home/you/.local/state/swarmux"
+backend = "files" # or "beads"
+
 [connected]
 runtime = "mirrored"
 command = ["codex", "exec"]
@@ -150,13 +165,20 @@ Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 
 ```tmux
 bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --pane-id \"#{pane_id}\" --agent codex --prompt \"%1\"'"
-bind-key W run-shell -b 'swarmux --output json watch --tmux >/dev/null 2>&1'
 bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
 ```
 
 Keep popup/window presentation in tmux itself. `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
 
-`watch`/`notify` show a compact completion excerpt inline:
+Task-scoped wait and watch:
+
+```bash
+swarmux --output json wait <id> --states succeeded,failed --timeout-ms 600000
+swarmux --output json watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
+swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
+```
+
+`watch`/`notify` show a compact excerpt inline:
 
 ```text
 swarmux 4rh succeeded what is the time currently ...current time is 23:14:05
@@ -174,8 +196,10 @@ Task logs are timestamped in UTC:
 ```bash
 swarmux --output json show <id>
 swarmux --output json logs <id> --raw
+swarmux --output json wait <id> --states succeeded,failed
+swarmux --output json watch <id> --lines 40
+swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
 swarmux --output json reconcile
 swarmux --output json notify --tmux
-swarmux --output json watch --tmux
 swarmux --output json prune --apply
 ```
