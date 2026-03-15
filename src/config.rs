@@ -33,6 +33,8 @@ pub struct PathsInfo {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct FileConfig {
+    pub home: Option<PathBuf>,
+    pub backend: Option<String>,
     #[serde(default)]
     pub connected: ConnectedConfig,
     #[serde(default)]
@@ -65,25 +67,26 @@ pub enum TaskRuntime {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self> {
-        let home = std::env::var_os("SWARMUX_HOME")
-            .map(PathBuf::from)
-            .or_else(default_state_home)
-            .unwrap_or_else(|| PathBuf::from(".swarmux"));
         let config_home = std::env::var_os("SWARMUX_CONFIG_HOME")
             .map(PathBuf::from)
             .or_else(default_config_home)
             .unwrap_or_else(|| PathBuf::from(".config"));
-
-        let backend = match std::env::var("SWARMUX_BACKEND")
-            .unwrap_or_else(|_| "files".to_string())
-            .as_str()
-        {
-            "beads" => BackendKind::Beads,
-            _ => BackendKind::Files,
-        };
-
         let config_dir = config_home.join("swarmux");
         let settings = load_file_config(&config_dir.join("config.toml"))?;
+        let home = std::env::var_os("SWARMUX_HOME")
+            .map(PathBuf::from)
+            .or_else(|| settings.home.clone())
+            .or_else(default_state_home)
+            .unwrap_or_else(|| PathBuf::from(".swarmux"));
+        let backend = match std::env::var("SWARMUX_BACKEND") {
+            Ok(value) => parse_backend_kind(&value)?,
+            Err(_) => settings
+                .backend
+                .as_deref()
+                .map(parse_backend_kind)
+                .transpose()?
+                .unwrap_or(BackendKind::Files),
+        };
 
         Ok(Self {
             home,
@@ -159,4 +162,12 @@ fn default_state_home() -> Option<PathBuf> {
 
 fn default_config_home() -> Option<PathBuf> {
     dirs::config_dir()
+}
+
+fn parse_backend_kind(raw: &str) -> Result<BackendKind> {
+    match raw {
+        "files" => Ok(BackendKind::Files),
+        "beads" => Ok(BackendKind::Beads),
+        _ => Err(anyhow::anyhow!("invalid backend: {raw}")),
+    }
 }

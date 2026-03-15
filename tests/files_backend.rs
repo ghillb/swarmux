@@ -2,6 +2,7 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use regex::Regex;
 use serde_json::Value;
+use std::fs;
 use std::process::Command as StdCommand;
 use std::thread;
 use std::time::Duration;
@@ -359,4 +360,25 @@ fn watch_streams_polls_until_a_task_matches() {
     .stdout(predicate::str::contains("\"state\":\"succeeded\""));
 
     worker.join().unwrap();
+}
+
+#[test]
+fn config_file_can_define_state_home() {
+    let config_home = TempDir::new().unwrap();
+    let state_home = config_home.path().join("custom-state");
+    let config_dir = config_home.path().join("swarmux");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(
+        config_dir.join("config.toml"),
+        format!("home = {:?}\nbackend = \"files\"\n", state_home),
+    )
+    .unwrap();
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.env("SWARMUX_CONFIG_HOME", config_home.path());
+    command.args(["--output", "json", "init"]);
+    command.assert().success();
+
+    assert!(state_home.join("tasks").is_dir());
+    assert!(state_home.join("logs").is_dir());
 }

@@ -41,6 +41,25 @@ impl Harness {
         command.args(args);
         command.assert()
     }
+
+    fn run_with_config_backend(&self, args: &[&str]) -> assert_cmd::assert::Assert {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+        let path = format!(
+            "{}:{}",
+            self.bin.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+        let config_dir = self.home.path().join("config-home").join("swarmux");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(config_dir.join("config.toml"), "backend = \"beads\"\n").unwrap();
+
+        command.env("SWARMUX_HOME", self.home.path());
+        command.env("SWARMUX_CONFIG_HOME", self.home.path().join("config-home"));
+        command.env("SWARMUX_FAKE_BD_ROOT", self.fake_root.path());
+        command.env("PATH", path);
+        command.args(args);
+        command.assert()
+    }
 }
 
 #[test]
@@ -188,6 +207,16 @@ fn beads_backend_supports_set_ref() {
         .stdout(predicate::str::contains(
             "\"external_ref\":\"https://github.com/example/repo/pull/456\"",
         ));
+}
+
+#[test]
+fn config_file_can_select_beads_backend() {
+    let harness = Harness::new();
+
+    harness
+        .run_with_config_backend(&["doctor"])
+        .success()
+        .stdout(predicate::str::contains("[ok] backend=beads"));
 }
 
 fn write_fake_bd(path: PathBuf, root: &Path) {
