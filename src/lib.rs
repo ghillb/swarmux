@@ -3,6 +3,8 @@ mod cli;
 mod config;
 mod id;
 mod model;
+mod panes;
+mod panes_support;
 mod runtime;
 mod schema;
 mod store;
@@ -97,6 +99,7 @@ pub fn run() -> Result<()> {
             )
         }
         Commands::Paths => emit(&cli.output, &store.paths().paths_info()),
+        Commands::Panes(args) => panes::run(&store, cli.output, args),
         Commands::Submit(args) => run_submit(&store, cli.output, args),
         Commands::Start(args) => run_start(&store, cli.output, args),
         Commands::Delegate(args) => run_delegate(&store, cli.output, args),
@@ -187,7 +190,7 @@ fn read_submit_payload(args: &SubmitArgs) -> Result<SubmitPayload> {
     serde_json::from_str::<SubmitPayload>(&raw).context("failed to parse submit payload JSON")
 }
 
-fn emit<T: serde::Serialize>(output: &OutputFormat, value: &T) -> Result<()> {
+pub(crate) fn emit<T: serde::Serialize>(output: &OutputFormat, value: &T) -> Result<()> {
     match output {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string(value)?);

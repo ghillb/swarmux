@@ -15,6 +15,7 @@ hide_title: true
     </p>
     <div class="chips">
       <span class="chip">tmux visibility</span>
+      <span class="chip">pane tree</span>
       <span class="chip">task states</span>
       <span class="chip">files/beads backends</span>
       <span class="chip">reconcile + prune</span>
@@ -28,6 +29,7 @@ hide_title: true
     <pre><code>$ swarmux doctor
 $ swarmux init
 $ swarmux --output json submit --json '{...}'
+$ swarmux --output json panes
 $ swarmux --output json start &lt;id&gt;
 $ swarmux overview --once</code></pre>
   </div>

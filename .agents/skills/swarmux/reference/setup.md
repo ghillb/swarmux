@@ -1,14 +1,24 @@
 # Swarmux setup
 
-## tmux F8 popup
+## tmux overview popup
 
-Use this binding:
+You can use binding like this:
 
 ```tmux
 bind -n F8 display-popup -T "Swarmux" -w 90% -h 80% -E "sh -lc 'swarmux overview --once; printf \"\\nPress Enter to close...\"; read _'"
 ```
 
 `overview` defaults to `--scope non-terminal`, so the popup shows active tasks first. Use `swarmux overview --once --scope all` or `--scope terminal` when needed.
+
+## tmux pane tree switcher
+
+Use this binding for the pane-first tmux tree view:
+
+```tmux
+bind -n C-M-Space run-shell "swarmux panes switch"
+```
+
+`swarmux panes switch` refreshes pane metadata and opens the native tmux `choose-tree` popup. It filters out `ft-*`, `git-*`, `nvim-*`, and `bv-*` sessions just like the normal session switcher.
 
 ## tmux task dispatch
 

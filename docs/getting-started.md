@@ -160,6 +160,7 @@ tmux source-file ~/.config/tmux/tmux.conf
 ```
 
 `overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
+Use `swarmux --output json panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
 
 Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 
@@ -168,7 +169,13 @@ bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch -
 bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
 ```
 
-Keep popup/window presentation in tmux itself. `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
+Pane-first tree popup:
+
+```tmux
+bind -n C-M-Space run-shell "swarmux panes switch"
+```
+
+`swarmux panes switch` owns the pane-tree popup. Keep other popup/window presentation in tmux itself. `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
 
 Task-scoped wait and watch:
 

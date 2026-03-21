@@ -27,6 +27,23 @@ pub fn schema_json() -> Value {
                 "mutating": false
             },
             {
+                "name": "panes",
+                "json_input": false,
+                "mutating": false,
+                "subcommands": [
+                    {
+                        "name": "sync-tmux-meta",
+                        "json_input": false,
+                        "mutating": true
+                    },
+                    {
+                        "name": "switch",
+                        "json_input": false,
+                        "mutating": true
+                    }
+                ]
+            },
+            {
                 "name": "submit",
                 "json_input": true,
                 "mutating": true,

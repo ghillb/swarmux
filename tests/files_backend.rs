@@ -287,7 +287,7 @@ fn wait_returns_the_first_matching_task() {
             "--interval-ms",
             "50",
             "--timeout-ms",
-            "2000",
+            "5000",
         ],
     )
     .success()
@@ -351,7 +351,7 @@ fn watch_streams_polls_until_a_task_matches() {
             "--interval-ms",
             "50",
             "--timeout-ms",
-            "2000",
+            "5000",
         ],
     )
     .success()

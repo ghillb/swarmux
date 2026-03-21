@@ -18,6 +18,11 @@ impl Harness {
         let fake_root = TempDir::new().unwrap();
 
         fs::create_dir_all(fake_root.path().join("sessions")).unwrap();
+        fs::write(fake_root.path().join("panes.tsv"), "").unwrap();
+        fs::write(fake_root.path().join("git-status.txt"), "").unwrap();
+        fs::write(fake_root.path().join("git-diff.txt"), "").unwrap();
+        fs::write(fake_root.path().join("git-cached.txt"), "").unwrap();
+        fs::write(fake_root.path().join("git-branch.txt"), "main\n").unwrap();
         fs::write(fake_root.path().join("git.log"), "").unwrap();
         fs::create_dir_all(fake_root.path().join("repo").join(".git-fake-branches")).unwrap();
         write_fake_tmux(bin.path().join("tmux"), fake_root.path());
@@ -596,6 +601,176 @@ fn dispatch_connected_uses_configured_default_runtime() {
 }
 
 #[test]
+fn panes_lists_and_syncs_tmux_metadata() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    fs::write(
+        harness.fake_root.path().join("git-status.txt"),
+        " M src/lib.rs\n?? new.txt\n D old.txt\n",
+    )
+    .unwrap();
+    fs::write(
+        harness.fake_root.path().join("git-diff.txt"),
+        "12\t3\tsrc/lib.rs\n1\t0\tnew.txt\n",
+    )
+    .unwrap();
+    fs::write(
+        harness.fake_root.path().join("git-cached.txt"),
+        "4\t1\tsrc/lib.rs\n",
+    )
+    .unwrap();
+    fs::write(
+        harness.fake_root.path().join("git-branch.txt"),
+        "feature/panes\n",
+    )
+    .unwrap();
+
+    let payload = format!(
+        "{{\"title\":\"Codex pane\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"runtime\":\"tui\",\"worktree\":\"{}\",\"session\":\"swarmux-pane-1\",\"command\":[\"codex\",\"exec\"]}}",
+        repo_root.display(),
+        repo_root.display()
+    );
+
+    let submitted = harness
+        .run(&["--output", "json", "submit", "--json", &payload])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let submitted: Value = serde_json::from_slice(&submitted).unwrap();
+    let task_id = submitted["id"].as_str().unwrap().to_owned();
+
+    harness
+        .run(&["--output", "json", "start", &task_id])
+        .success()
+        .stdout(predicate::str::contains("\"state\":\"running\""));
+
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t/tmp/other\tbash\tShell pane\n",
+            repo_root.display()
+        ),
+    )
+    .unwrap();
+
+    let panes = harness
+        .run_in_tmux_pane(
+            "%42",
+            &repo_root.display().to_string(),
+            &["--output", "json", "panes"],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let panes: Value = serde_json::from_slice(&panes).unwrap();
+
+    assert_eq!(panes["counts"]["panes"], 2);
+    assert_eq!(panes["counts"]["sessions"], 2);
+    assert_eq!(panes["counts"]["managed_panes"], 1);
+    assert_eq!(panes["counts"]["dirty_panes"], 1);
+    assert_eq!(panes["current_pane"], "%42");
+    assert_eq!(panes["panes"][0]["current"], true);
+    assert_eq!(panes["panes"][0]["managed_by_swarmux"], true);
+    assert_eq!(panes["panes"][0]["task"]["id"], task_id);
+    assert!(
+        panes["panes"][0]["label"]
+            .as_str()
+            .unwrap()
+            .contains("Codex pane")
+    );
+    assert!(
+        panes["panes"][0]["label"]
+            .as_str()
+            .unwrap()
+            .contains("feature/panes")
+    );
+    assert!(
+        panes["panes"][0]["git"]["label"]
+            .as_str()
+            .unwrap()
+            .contains("chg1")
+    );
+
+    let synced = harness
+        .run_in_tmux_pane(
+            "%42",
+            &repo_root.display().to_string(),
+            &["--output", "json", "panes", "sync-tmux-meta"],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let synced: Value = serde_json::from_slice(&synced).unwrap();
+    assert_eq!(synced["ok"], true);
+    assert_eq!(synced["updated"], 2);
+
+    let tmux_log = fs::read_to_string(harness.fake_root.path().join("tmux.log")).unwrap();
+    assert!(tmux_log.contains("set-option -pt %42 @swx_label"));
+    assert!(tmux_log.contains("set-option -pt %42 @swx_task_id"));
+    assert!(tmux_log.contains("set-option -pt %99 @swx_label"));
+}
+
+#[test]
+fn panes_switch_launches_tmux_popup_with_filtered_tree() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    let payload = format!(
+        "{{\"title\":\"Codex pane\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"runtime\":\"tui\",\"worktree\":\"{}\",\"session\":\"swarmux-pane-1\",\"command\":[\"codex\",\"exec\"]}}",
+        repo_root.display(),
+        repo_root.display()
+    );
+
+    let submitted = harness
+        .run(&["--output", "json", "submit", "--json", &payload])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let submitted: Value = serde_json::from_slice(&submitted).unwrap();
+    let task_id = submitted["id"].as_str().unwrap().to_owned();
+
+    harness
+        .run(&["--output", "json", "start", &task_id])
+        .success();
+
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t/tmp/other\tbash\tShell pane\n",
+            repo_root.display()
+        ),
+    )
+    .unwrap();
+
+    let switch = harness
+        .run_in_tmux_pane(
+            "%42",
+            &repo_root.display().to_string(),
+            &["--output", "json", "panes", "switch"],
+        )
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let switch: Value = serde_json::from_slice(&switch).unwrap();
+
+    assert_eq!(switch["ok"], true);
+    assert_eq!(switch["updated"], 2);
+
+    let tmux_log = fs::read_to_string(harness.fake_root.path().join("tmux.log")).unwrap();
+    assert!(tmux_log.contains("display-popup"));
+    assert!(tmux_log.contains("choose-tree -f"));
+    assert!(tmux_log.contains("@swx_row"));
+}
+
+#[test]
 fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
@@ -816,6 +991,7 @@ root="{root}"
 sessions="$root/sessions"
 cmd="${{1:-}}"
 shift || true
+printf '%s\n' "$cmd $*" >> "$root/tmux.log"
 
 session_file() {{
   printf '%s/%s.pane\n' "$sessions" "$1"
@@ -895,6 +1071,14 @@ case "$cmd" in
     done
     cat "$(session_file "$session")"
     ;;
+  list-panes)
+    if [ -f "$root/panes.tsv" ]; then
+      cat "$root/panes.tsv"
+    fi
+    ;;
+  set-option)
+    printf '%s %s\n' "$cmd" "$*" >> "$root/tmux.log"
+    ;;
   send-keys)
     while [ "$#" -gt 0 ]; do
       case "$1" in
@@ -946,7 +1130,10 @@ case "$cmd" in
       esac
       exit 0
     fi
-    printf '%s\n' "${{1:-}}" >> "$root/display.log"
+      printf '%s\n' "${{1:-}}" >> "$root/display.log"
+    ;;
+  display-popup)
+    exit 0
     ;;
   *)
     echo "unexpected tmux command: $cmd" >&2
@@ -981,6 +1168,11 @@ if [ "${{1:-}}" = "-C" ]; then
   shift 2
 fi
 
+repo_ok=false
+if [ "$repo_root" = "$root/repo" ]; then
+  repo_ok=true
+fi
+
 branch_file() {{
   printf '%s/.git-fake-branches/%s\n' "$repo_root" "$1"
 }}
@@ -1001,7 +1193,19 @@ case "${{1:-}}" in
         ;;
     esac
     ;;
+  branch)
+    if [ "$repo_ok" = true ] && [ "${{2:-}}" = "--show-current" ]; then
+      cat "$root/git-branch.txt"
+    elif [ "${{2:-}}" = "-D" ]; then
+      rm -f "$(branch_file "$3")"
+    else
+      exit 1
+    fi
+    ;;
   show-ref)
+    if [ "$repo_ok" = false ]; then
+      exit 1
+    fi
     ref="${{4:-}}"
     branch="${{ref#refs/heads/}}"
     if [ -f "$(branch_file "$branch")" ]; then
@@ -1009,13 +1213,32 @@ case "${{1:-}}" in
     fi
     exit 1
     ;;
-  branch)
-    if [ "${{2:-}}" = "-D" ]; then
-      rm -f "$(branch_file "$3")"
+  status)
+    if [ "$repo_ok" = true ]; then
+      cat "$root/git-status.txt"
+    else
+      exit 1
+    fi
+    ;;
+  diff)
+    if [ "$repo_ok" = true ]; then
+      if [ "${{2:-}}" = "--cached" ] && [ "${{3:-}}" = "--numstat" ]; then
+        cat "$root/git-cached.txt"
+      elif [ "${{2:-}}" = "--numstat" ]; then
+        cat "$root/git-diff.txt"
+      else
+        exit 1
+      fi
+    else
+      exit 1
     fi
     ;;
   rev-parse)
-    printf '%s\n' "$repo_root"
+    if [ "$repo_ok" = true ]; then
+      printf '%s\n' "$repo_root"
+    else
+      exit 1
+    fi
     ;;
   *)
     ;;

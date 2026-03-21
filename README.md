@@ -49,6 +49,7 @@ swarmux --output json submit --json '{
   "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
 swarmux --output json list
+swarmux --output json panes
 swarmux overview --once
 swarmux overview --once --scope all
 ```
@@ -134,7 +135,7 @@ bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch -
 
 Connected dispatch still appends `--prompt` as the trailing command argument for every runtime. Use `tui` there only with commands that naturally accept that trailing prompt input.
 
-`swarmux` does not create popups or windows for TUI tasks. Keep that presentation in your tmux config; for example, wrap `swarmux attach <id>` or tmux session switching in your own bindings.
+`swarmux panes switch` owns the pane-tree popup path. Keep any other popup/window presentation in your tmux config; for example, pair `swarmux panes sync-tmux-meta` with tmux `choose-tree` or wrap `swarmux attach <id>` in your own bindings.
 
 Canonical state configuration can also live in `config.toml`:
 

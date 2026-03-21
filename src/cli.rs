@@ -25,6 +25,7 @@ pub enum Commands {
     Doctor,
     Init,
     Paths,
+    Panes(PanesArgs),
     Submit(SubmitArgs),
     Start(IdArgs),
     Delegate(SubmitArgs),
@@ -236,6 +237,18 @@ pub struct OverviewArgs {
 
     #[arg(long, value_enum, default_value = "non-terminal")]
     pub scope: OverviewScope,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PanesArgs {
+    #[command(subcommand)]
+    pub command: Option<PanesCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PanesCommand {
+    SyncTmuxMeta,
+    Switch,
 }
 
 #[derive(Debug, clap::Args)]
