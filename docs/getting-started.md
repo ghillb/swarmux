@@ -161,6 +161,7 @@ tmux source-file ~/.config/tmux/tmux.conf
 
 `overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
 Use `swarmux --output json panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
+The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions.
 
 Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 

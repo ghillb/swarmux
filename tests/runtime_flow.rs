@@ -771,6 +771,43 @@ fn panes_switch_launches_tmux_popup_with_filtered_tree() {
 }
 
 #[test]
+fn panes_switch_uses_configured_tmux_session_ignore_patterns() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    let config_dir = harness.home.path().join("config-home").join("swarmux");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(
+        config_dir.join("config.toml"),
+        "[tmux]\nsession_ignore = [\"alpha-*\", \"beta-*\"]\n",
+    )
+    .unwrap();
+
+    let repo_root = harness.fake_root.path().join("repo");
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\n",
+            repo_root.display()
+        ),
+    )
+    .unwrap();
+
+    harness
+        .run_in_tmux_pane(
+            "%42",
+            &repo_root.display().to_string(),
+            &["panes", "switch"],
+        )
+        .success();
+
+    let tmux_log = fs::read_to_string(harness.fake_root.path().join("tmux.log")).unwrap();
+    assert!(tmux_log.contains("alpha-*"));
+    assert!(tmux_log.contains("beta-*"));
+    assert!(!tmux_log.contains("ft-*"));
+}
+
+#[test]
 fn notify_reports_terminal_tasks_once_and_can_emit_tmux_messages() {
     let harness = Harness::new();
     harness.run(&["init"]).success();

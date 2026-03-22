@@ -143,7 +143,12 @@ Canonical state configuration can also live in `config.toml`:
 # ~/.config/swarmux/config.toml
 home = "/home/you/.local/state/swarmux"
 backend = "files" # or "beads"
+
+[tmux]
+session_ignore = ["ft-*", "git-*", "nvim-*", "bv-*"]
 ```
+
+`tmux.session_ignore` is optional. Leave it unset to show all sessions; set it to match your tmux workspace filters if you want the pane switcher to hide those sessions too.
 
 Environment variables still override config values:
 

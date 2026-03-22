@@ -75,7 +75,6 @@ struct PaneSwitchResponse {
     updated: usize,
 }
 
-const SWARMUX_TREE_FILTER: &str = "#{&&:#{&&:#{&&:#{!=:#{m:ft-*,#{session_name}},1},#{!=:#{m:git-*,#{session_name}},1}},#{!=:#{m:nvim-*,#{session_name}},1}},#{!=:#{m:bv-*,#{session_name}},1}}";
 const SWARMUX_TREE_FORMAT: &str =
     "#{?pane_format,#{@swx_row},#{?window_format,#{window_index}:#{window_name},#{session_name}}}";
 const SWARMUX_TREE_TEMPLATE: &str = r##"sh -lc 'target="$1"; pane_id="$(tmux display-message -p -t "$target" "#{pane_id}" 2>/dev/null || true)"; if [ -z "$pane_id" ]; then exit 0; fi; session_name="$(tmux display-message -p -t "$target" "#{session_name}")"; window_id="$(tmux display-message -p -t "$target" "#{window_id}")"; tmux switch-client -t "$session_name"; tmux select-window -t "$window_id"; tmux select-pane -t "$pane_id"' sh '%%'"##;
@@ -198,7 +197,7 @@ fn sync_tmux_meta(store: &Store) -> Result<PaneSyncResponse> {
 
 fn switch(store: &Store, output: OutputFormat) -> Result<()> {
     let sync = sync_tmux_meta(store)?;
-    launch_swarmux_tree_popup()?;
+    launch_swarmux_tree_popup(&store.paths().settings.tmux.ignore_filter())?;
 
     if matches!(output, OutputFormat::Json) {
         emit(
@@ -213,12 +212,12 @@ fn switch(store: &Store, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-fn launch_swarmux_tree_popup() -> Result<()> {
+fn launch_swarmux_tree_popup(filter: &str) -> Result<()> {
     let popup_w = env::var("SWARM_POPUP_W").unwrap_or_else(|_| "96%".to_string());
     let popup_h = env::var("SWARM_POPUP_H").unwrap_or_else(|_| "85%".to_string());
     let choose_tree_command = format!(
         "tmux choose-tree -f {} -F {} {}",
-        shell_quote(SWARMUX_TREE_FILTER),
+        shell_quote(filter),
         shell_quote(SWARMUX_TREE_FORMAT),
         shell_quote(SWARMUX_TREE_TEMPLATE),
     );

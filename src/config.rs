@@ -36,9 +36,23 @@ pub struct FileConfig {
     pub home: Option<PathBuf>,
     pub backend: Option<String>,
     #[serde(default)]
+    pub tmux: TmuxConfig,
+    #[serde(default)]
     pub connected: ConnectedConfig,
     #[serde(default)]
     pub agents: BTreeMap<String, AgentConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TmuxConfig {
+    #[serde(default)]
+    pub session_ignore: Vec<String>,
+}
+
+impl TmuxConfig {
+    pub fn ignore_filter(&self) -> String {
+        tmux_session_ignore_filter(&self.session_ignore)
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -169,5 +183,71 @@ fn parse_backend_kind(raw: &str) -> Result<BackendKind> {
         "files" => Ok(BackendKind::Files),
         "beads" => Ok(BackendKind::Beads),
         _ => Err(anyhow::anyhow!("invalid backend: {raw}")),
+    }
+}
+
+fn tmux_session_ignore_filter(patterns: &[String]) -> String {
+    let mut clauses = patterns
+        .iter()
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|pattern| !pattern.is_empty())
+        .map(|pattern| format!("#{{!=:#{{m:{pattern},#{{session_name}}}},1}}"));
+
+    match clauses.next() {
+        Some(first) => clauses.fold(first, |expr, clause| format!("#{{&&:{expr},{clause}}}")),
+        None => "1".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn tmux_config_defaults_have_no_session_ignore_list() {
+        assert!(TmuxConfig::default().session_ignore.is_empty());
+    }
+
+    #[test]
+    fn tmux_config_builds_a_true_filter_when_the_list_is_empty() {
+        let config = TmuxConfig {
+            session_ignore: Vec::new(),
+        };
+
+        assert_eq!(config.ignore_filter(), "1");
+    }
+
+    #[test]
+    fn file_config_loads_a_custom_tmux_session_ignore_list() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[tmux]
+session_ignore = ["alpha-*", "beta-*"]
+"#,
+        )
+        .unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert_eq!(
+            config.tmux.session_ignore,
+            vec!["alpha-*".to_string(), "beta-*".to_string()]
+        );
+    }
+
+    #[test]
+    fn file_config_defaults_tmux_session_ignore_when_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[connected]\nagent = \"codex\"\n").unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert!(config.tmux.session_ignore.is_empty());
     }
 }

@@ -18,7 +18,7 @@ Use this binding for the pane-first tmux tree view:
 bind -n C-M-Space run-shell "swarmux panes switch"
 ```
 
-`swarmux panes switch` refreshes pane metadata and opens the native tmux `choose-tree` popup. It filters out `ft-*`, `git-*`, `nvim-*`, and `bv-*` sessions just like the normal session switcher.
+`swarmux panes switch` refreshes pane metadata and opens the native tmux `choose-tree` popup. The filtered session patterns come from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions.
 
 ## tmux task dispatch
 
