@@ -152,7 +152,8 @@ pub fn schema_json() -> Value {
             {
                 "name": "overview",
                 "json_input": false,
-                "mutating": false
+                "mutating": false,
+                "supports_tui": true
             }
         ]
     })

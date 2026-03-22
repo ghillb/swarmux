@@ -52,7 +52,10 @@ swarmux --output json list
 swarmux --output json panes
 swarmux overview --once
 swarmux overview --once --scope all
+swarmux overview --tui
 ```
+
+`overview --tui` opens a tabbed dashboard with `Overview`, `Operational`, and `Client All`.
 
 tmux-friendly dispatch without JSON quoting:
 
@@ -134,6 +137,8 @@ bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch -
 `tui` runs a full-screen interactive program in its own tmux session, still detached from `start`/`delegate` so agents get a clean JSON response and operators choose when to `attach`.
 
 Connected dispatch still appends `--prompt` as the trailing command argument for every runtime. Use `tui` there only with commands that naturally accept that trailing prompt input.
+
+`swarmux overview --tui` is the interactive overview dashboard. Use tmux popup bindings to open it in a focused overlay.
 
 `swarmux panes switch` owns the pane-tree popup path. Keep any other popup/window presentation in your tmux config; for example, pair `swarmux panes sync-tmux-meta` with tmux `choose-tree` or wrap `swarmux attach <id>` in your own bindings.
 

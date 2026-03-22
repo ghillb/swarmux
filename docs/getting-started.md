@@ -150,8 +150,10 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 Use this mapping to open a snapshot popup and keep it open until Enter:
 
 ```tmux
-bind -n <key> display-popup -T "Swarmux" -w 90% -h 80% -E "sh -lc 'swarmux overview --once; printf \"\\nPress Enter to close...\"; read _'"
+bind -n <key> display-popup -T "Swarmux" -w 90% -h 80% -E "sh -lc 'swarmux overview --tui'"
 ```
+
+Use left/right to switch between the `Overview`, `Operational`, and `Client All` tabs.
 
 Reload tmux:
 
@@ -160,6 +162,7 @@ tmux source-file ~/.config/tmux/tmux.conf
 ```
 
 `overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
+Use `swarmux overview --tui` for the interactive dashboard and `swarmux overview --once` for a snapshot.
 Use `swarmux --output json panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
 The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions.
 

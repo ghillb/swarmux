@@ -2,7 +2,7 @@ use crate::config::TaskRuntime;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Json,
     Text,
@@ -116,7 +116,7 @@ pub enum DispatchMode {
     Manual,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OverviewScope {
     Terminal,
     NonTerminal,
@@ -234,6 +234,9 @@ pub struct OverviewArgs {
 
     #[arg(long)]
     pub once: bool,
+
+    #[arg(long, conflicts_with_all = ["once", "title"])]
+    pub tui: bool,
 
     #[arg(long, value_enum, default_value = "non-terminal")]
     pub scope: OverviewScope,

@@ -18,9 +18,20 @@ fn schema_is_available_as_machine_readable_json() {
         .stdout(predicate::str::contains("\"watch\""))
         .stdout(predicate::str::contains("\"set-ref\""))
         .stdout(predicate::str::contains("\"json_input\""))
+        .stdout(predicate::str::contains("\"supports_tui\":true"))
         .stdout(predicate::str::contains(
             "\"runtime_values\":[\"headless\",\"mirrored\",\"tui\"]",
         ));
+}
+
+#[test]
+fn overview_help_exposes_tui_mode() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["overview", "--help"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--tui"));
 }
 
 #[test]

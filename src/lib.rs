@@ -3,6 +3,10 @@ mod cli;
 mod config;
 mod id;
 mod model;
+mod overview_tui;
+mod overview_tui_data;
+mod overview_tui_helpers;
+mod overview_tui_render;
 mod panes;
 mod panes_support;
 mod runtime;
@@ -434,6 +438,14 @@ fn run_doctor(store: &Store, output: OutputFormat) -> Result<()> {
 }
 
 fn run_overview(store: &Store, output: OutputFormat, args: cli::OverviewArgs) -> Result<()> {
+    if args.tui {
+        if matches!(output, OutputFormat::Json) {
+            return Err(anyhow!("overview --tui requires text output"));
+        }
+
+        return overview_tui::run(store, args.scope);
+    }
+
     if args.title {
         println!(
             "Swarmux - {} - {}",
@@ -514,7 +526,7 @@ fn run_overview(store: &Store, output: OutputFormat, args: cli::OverviewArgs) ->
     }
 }
 
-fn overview_scope_matches(state: &TaskState, scope: &OverviewScope) -> bool {
+pub(crate) fn overview_scope_matches(state: &TaskState, scope: &OverviewScope) -> bool {
     match scope {
         OverviewScope::Terminal => state.is_terminal(),
         OverviewScope::NonTerminal => !state.is_terminal(),
@@ -522,7 +534,7 @@ fn overview_scope_matches(state: &TaskState, scope: &OverviewScope) -> bool {
     }
 }
 
-fn overview_scope_label(scope: &OverviewScope) -> &'static str {
+pub(crate) fn overview_scope_label(scope: &OverviewScope) -> &'static str {
     match scope {
         OverviewScope::Terminal => "terminal",
         OverviewScope::NonTerminal => "non_terminal",
