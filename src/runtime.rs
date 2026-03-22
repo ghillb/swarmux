@@ -332,7 +332,7 @@ fn spawn_piped_tmux_session(
     run_tmux_dynamic(&args_ref).map(|_| ())
 }
 
-fn has_tmux_session(session: &str) -> Result<bool> {
+pub(crate) fn has_tmux_session(session: &str) -> Result<bool> {
     let output = Command::new("tmux")
         .args(["has-session", "-t", session])
         .output()

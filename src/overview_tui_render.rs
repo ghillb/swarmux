@@ -132,7 +132,7 @@ fn draw_overview(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &Dashb
         vec![
             metric_line("filtered", data.visible_summary.total, GOOD),
             metric_line("all", data.all_summary.total, ACCENT),
-            metric_line("sessions", data.visible_summary.with_session, WARN),
+            metric_line("live sessions", data.visible_live_sessions, WARN),
         ],
     );
 
@@ -224,7 +224,7 @@ fn draw_operational(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &Da
         "Runtime",
         render_counts(&data.runtime_counts, ACCENT),
     );
-    draw_detail_panel(frame, bottom[1], "Latest Task", selected);
+    draw_detail_panel(frame, bottom[1], "Selected Task", selected);
 }
 
 fn draw_client_all(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &DashboardData) {

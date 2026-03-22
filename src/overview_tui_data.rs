@@ -4,6 +4,7 @@ use crate::model::{TaskMode, TaskRecord, TaskState};
 use crate::overview_scope_matches;
 use crate::panes_support::runtime_label;
 use crate::reconcile_store;
+use crate::runtime::has_tmux_session;
 use crate::store::Store;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -78,6 +79,7 @@ pub(crate) struct DashboardData {
     pub(crate) all_tasks: Vec<TaskRecord>,
     pub(crate) visible_summary: TaskSummary,
     pub(crate) all_summary: TaskSummary,
+    pub(crate) visible_live_sessions: usize,
     pub(crate) repo_counts: Vec<(String, usize)>,
     pub(crate) runtime_counts: Vec<(String, usize)>,
 }
@@ -97,6 +99,7 @@ impl DashboardData {
 
         let visible_summary = TaskSummary::from(&visible_tasks);
         let all_summary = TaskSummary::from(&all_tasks);
+        let visible_live_sessions = count_live_sessions(&visible_tasks)?;
         let repo_counts = count_by(&all_tasks, |task| task.repo.clone(), 5);
         let runtime_counts = count_by(&all_tasks, |task| runtime_label(task).to_string(), 3);
 
@@ -107,10 +110,24 @@ impl DashboardData {
             all_tasks,
             visible_summary,
             all_summary,
+            visible_live_sessions,
             repo_counts,
             runtime_counts,
         })
     }
+}
+
+fn count_live_sessions(tasks: &[TaskRecord]) -> Result<usize> {
+    let mut live = 0usize;
+    for task in tasks {
+        let Some(session) = task.session.as_deref() else {
+            continue;
+        };
+        if has_tmux_session(session)? {
+            live += 1;
+        }
+    }
+    Ok(live)
 }
 
 fn count_by<F>(tasks: &[TaskRecord], mut key: F, limit: usize) -> Vec<(String, usize)>
@@ -183,6 +200,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             ),
             all_summary: TaskSummary::from(&all),
+            visible_live_sessions: 0,
             repo_counts: count_by(&all, |task| task.repo.clone(), 5),
             runtime_counts: count_by(&all, |task| runtime_label(task).to_string(), 3),
         };

@@ -263,6 +263,7 @@ mod tests {
             all_tasks: vec![task("a"), task("b")],
             visible_summary: data::TaskSummary::from(&[task("a")]),
             all_summary: data::TaskSummary::from(&[task("a"), task("b")]),
+            visible_live_sessions: 0,
             repo_counts: vec![],
             runtime_counts: vec![],
         };
