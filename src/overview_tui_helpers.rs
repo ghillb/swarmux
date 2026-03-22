@@ -15,6 +15,7 @@ const WARN: Color = Color::Rgb(255, 204, 102);
 const BAD: Color = Color::Rgb(255, 108, 108);
 const VIOLET: Color = Color::Rgb(191, 150, 255);
 const TEAL: Color = Color::Rgb(95, 241, 223);
+const METRIC_LABEL_WIDTH: usize = 13;
 
 pub(crate) fn status_spans(app: &AppState, data: &DashboardData) -> Vec<Span<'static>> {
     let (label, selected, total, focused) = match app.tab {
@@ -137,8 +138,12 @@ pub(crate) fn task_detail_lines(task: &TaskRecord) -> Vec<Line<'static>> {
 }
 
 pub(crate) fn metric_line(label: &str, value: usize, color: Color) -> Line<'static> {
+    let label = truncate(label, METRIC_LABEL_WIDTH);
     Line::from(vec![
-        Span::styled(format!("{label:<12}"), Style::default().fg(MUTED)),
+        Span::styled(
+            format!("{label:<width$}", width = METRIC_LABEL_WIDTH),
+            Style::default().fg(MUTED),
+        ),
         Span::styled(
             format!("{value:>5}"),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
