@@ -3,6 +3,7 @@ use crate::config::TaskRuntime;
 use crate::model::{TaskMode, TaskRecord, TaskState};
 use crate::overview_scope_matches;
 use crate::panes_support::runtime_label;
+use crate::reconcile_store;
 use crate::store::Store;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -83,6 +84,7 @@ pub(crate) struct DashboardData {
 
 impl DashboardData {
     pub(crate) fn load(store: &Store, scope: OverviewScope) -> Result<Self> {
+        reconcile_store(store)?;
         let mut all_tasks = store.list()?;
         all_tasks.sort_by_key(|task| (task.updated_at, task.created_at));
         all_tasks.reverse();

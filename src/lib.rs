@@ -807,7 +807,7 @@ fn infer_repo_ref(repo_root: &str) -> String {
         .to_string()
 }
 
-fn reconcile_store(store: &Store) -> Result<usize> {
+pub(crate) fn reconcile_store(store: &Store) -> Result<usize> {
     let mut tasks = list_tasks(store)?;
     let outcome = runtime::reconcile(
         &mut tasks,
