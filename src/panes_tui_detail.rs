@@ -14,50 +14,34 @@ const MUTED: Color = Color::Rgb(134, 144, 160);
 pub(crate) fn header_summary_line(snapshot: Option<&PaneSnapshot>, status: &str) -> Line<'static> {
     let status_text = status.to_string();
     let status_ready = status == "ready";
-    let (git_label, repo, task_state, task_active) = if let Some(snapshot) = snapshot {
-        let git_label = snapshot
-            .git
-            .as_ref()
-            .map(|git| git.label.as_str())
-            .unwrap_or(if status_ready { "n/a" } else { "loading" });
-        let repo = snapshot.repo.as_deref().unwrap_or("n/a");
-        let branch = snapshot.branch.as_deref().unwrap_or("");
-        let repo = if branch.is_empty() {
-            repo.to_string()
-        } else {
-            format!("{repo}@{branch}")
-        };
+    let (path, task_state, task_active) = if let Some(snapshot) = snapshot {
+        let path = truncate(&snapshot.pane_current_path, 40);
         let task_state = snapshot
             .task
             .as_ref()
             .map(|task| task_state_label(&task.state))
             .unwrap_or("unmanaged");
-        (git_label, repo, task_state, snapshot.task.is_some())
+        (path, task_state, snapshot.task.is_some())
     } else {
-        ("n/a", "n/a".to_string(), "unmanaged", false)
+        ("n/a".to_string(), "unmanaged", false)
     };
 
-    let mut spans = vec![
+    let spans = vec![
         Span::styled("state ", Style::default().fg(MUTED)),
         Span::styled(
             status_text,
             Style::default().fg(if status_ready { GOOD } else { WARN }),
         ),
         Span::raw("  "),
-        Span::styled("repo ", Style::default().fg(MUTED)),
-        Span::styled(truncate(&repo, 28), Style::default().fg(GOOD)),
-        Span::raw("  "),
-        Span::styled("git ", Style::default().fg(MUTED)),
-    ];
-    spans.extend(git_summary_spans(git_label, status_ready));
-    spans.extend([
+        Span::styled("path ", Style::default().fg(MUTED)),
+        Span::styled(path, Style::default().fg(GOOD)),
         Span::raw("   "),
         Span::styled("task ", Style::default().fg(MUTED)),
         Span::styled(
             task_state,
             Style::default().fg(if task_active { ACCENT } else { MUTED }),
         ),
-    ]);
+    ];
 
     Line::from(spans)
 }
@@ -85,6 +69,30 @@ pub(crate) fn footer_line() -> Line<'static> {
         ),
         Span::styled(" quits", Style::default().fg(MUTED)),
     ])
+}
+
+pub(crate) fn row_repo_line(snapshot: &PaneSnapshot) -> Line<'static> {
+    let repo = snapshot.repo.as_deref().unwrap_or("n/a");
+    let branch = snapshot.branch.as_deref().unwrap_or("");
+    let repo = if branch.is_empty() {
+        repo.to_string()
+    } else {
+        format!("{repo}@{branch}")
+    };
+
+    Line::from(vec![Span::styled(
+        truncate(&repo, 18),
+        Style::default().fg(GOOD),
+    )])
+}
+
+pub(crate) fn row_git_line(snapshot: &PaneSnapshot, loaded: bool) -> Line<'static> {
+    let label = snapshot
+        .git
+        .as_ref()
+        .map(|git| git.label.as_str())
+        .unwrap_or(if loaded { "n/a" } else { "loading" });
+    Line::from(git_summary_spans(label, loaded))
 }
 
 pub(crate) fn git_summary_spans(label: &str, loaded: bool) -> Vec<Span<'static>> {
@@ -223,8 +231,7 @@ mod tests {
             .join("");
 
         assert!(text.contains("state ready"));
-        assert!(text.contains("repo core@master"));
-        assert!(text.contains("git chg2 del1 new4 +12/-3"));
+        assert!(text.contains("path /tmp/core"));
         assert!(text.contains("task running"));
     }
 
@@ -238,9 +245,83 @@ mod tests {
             .join("");
 
         assert!(text.contains("state empty"));
-        assert!(text.contains("repo n/a"));
-        assert!(text.contains("git n/a"));
+        assert!(text.contains("path n/a"));
         assert!(text.contains("task unmanaged"));
+    }
+
+    #[test]
+    fn row_repo_line_renders_repo_and_branch() {
+        let snapshot = PaneSnapshot {
+            current: true,
+            managed_by_swarmux: false,
+            session_name: "session-a".to_string(),
+            window_id: "@1".to_string(),
+            window_index: 1,
+            window_name: "shell".to_string(),
+            pane_id: "%1".to_string(),
+            pane_index: 1,
+            pane_active: true,
+            pane_current_path: "/tmp/core".to_string(),
+            pane_current_command: "bash".to_string(),
+            pane_title: "shell".to_string(),
+            task: None,
+            repo_root: None,
+            repo: Some(".files".to_string()),
+            branch: Some("master".to_string()),
+            git: None,
+            label: "initial".to_string(),
+        };
+
+        let text = row_repo_line(&snapshot)
+            .spans
+            .into_iter()
+            .map(|span| span.content.into_owned())
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert_eq!(text, ".files@master");
+    }
+
+    #[test]
+    fn row_git_line_renders_git_summary_tokens() {
+        let snapshot = PaneSnapshot {
+            current: true,
+            managed_by_swarmux: false,
+            session_name: "session-a".to_string(),
+            window_id: "@1".to_string(),
+            window_index: 1,
+            window_name: "shell".to_string(),
+            pane_id: "%1".to_string(),
+            pane_index: 1,
+            pane_active: true,
+            pane_current_path: "/tmp/core".to_string(),
+            pane_current_command: "bash".to_string(),
+            pane_title: "shell".to_string(),
+            task: None,
+            repo_root: None,
+            repo: Some(".files".to_string()),
+            branch: Some("master".to_string()),
+            git: Some(PaneGitSummary {
+                dirty: true,
+                changed_files: 1,
+                deleted_files: 1,
+                untracked_files: 0,
+                insertions: 2,
+                deletions: 1,
+                label: "chg1 +2/-1".to_string(),
+            }),
+            label: "initial".to_string(),
+        };
+
+        let text = row_git_line(&snapshot, true)
+            .spans
+            .into_iter()
+            .map(|span| span.content.into_owned())
+            .collect::<Vec<_>>()
+            .join("");
+
+        assert!(text.contains("chg1"));
+        assert!(text.contains("+2/-1"));
     }
 
     #[test]

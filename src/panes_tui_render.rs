@@ -200,7 +200,8 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
             Constraint::Length(18),
             Constraint::Length(18),
             Constraint::Length(24),
-            Constraint::Min(24),
+            Constraint::Length(18),
+            Constraint::Min(18),
         ],
     )
     .header(
@@ -209,7 +210,8 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
             Cell::from("Session"),
             Cell::from("Window"),
             Cell::from("Command"),
-            Cell::from("Path"),
+            Cell::from("Repo"),
+            Cell::from("Git"),
         ])
         .style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
     )

@@ -1,9 +1,9 @@
 use crate::model::TaskRecord;
-use crate::overview_tui_helpers::truncate;
 use crate::panes::{PaneGitSummary, PaneSnapshot};
 use crate::panes_support::{
     RawPane, build_label, git_context, git_info, list_tasks, list_tmux_panes, pane_sort_key,
 };
+use crate::panes_tui_detail::{row_git_line, row_repo_line};
 use crate::store::Store;
 use anyhow::Result;
 use ratatui::style::{Color, Modifier, Style};
@@ -136,10 +136,20 @@ impl PaneEntry {
 
         Row::new(vec![
             Cell::from(marker),
-            Cell::from(truncate(&self.snapshot.session_name, 18)),
-            Cell::from(truncate(&self.snapshot.window_name, 18)),
-            Cell::from(truncate(&self.snapshot.pane_current_command, 24)),
-            Cell::from(truncate(&self.snapshot.pane_current_path, 32)),
+            Cell::from(crate::overview_tui_helpers::truncate(
+                &self.snapshot.session_name,
+                18,
+            )),
+            Cell::from(crate::overview_tui_helpers::truncate(
+                &self.snapshot.window_name,
+                18,
+            )),
+            Cell::from(crate::overview_tui_helpers::truncate(
+                &self.snapshot.pane_current_command,
+                24,
+            )),
+            Cell::from(row_repo_line(&self.snapshot)),
+            Cell::from(row_git_line(&self.snapshot, self.metadata_loaded)),
         ])
         .style(style)
     }
