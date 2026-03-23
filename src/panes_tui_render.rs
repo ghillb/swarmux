@@ -1,7 +1,7 @@
-use crate::overview_tui_helpers::truncate;
 use crate::panes::PaneSnapshot;
-use crate::panes_support::{pane_row, task_state_label};
-use crate::panes_tui::{PaneSwitcherState, spawn_hydrator};
+use crate::panes_tui::PaneSwitcherState;
+use crate::panes_tui::spawn_hydrator;
+use crate::panes_tui_detail::{footer_line, header_summary_line};
 use crate::store::Store;
 use anyhow::{Context, Result, anyhow};
 use crossterm::cursor::{Hide, Show};
@@ -14,18 +14,15 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
 use std::io::{self, IsTerminal};
 use std::sync::mpsc;
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 
-const TEXT: Color = Color::Rgb(236, 239, 244);
 const MUTED: Color = Color::Rgb(134, 144, 160);
 const ACCENT: Color = Color::Rgb(88, 214, 255);
-const GOOD: Color = Color::Rgb(96, 255, 160);
-const WARN: Color = Color::Rgb(255, 204, 102);
 pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
     if !io::stdout().is_terminal() {
         return Err(anyhow!(
@@ -148,22 +145,15 @@ fn run_tmux<const N: usize>(args: [&str; N]) -> Result<()> {
 
 fn draw(frame: &mut Frame<'_>, state: &PaneSwitcherState, loaded: usize, total: usize) {
     let outer = Layout::vertical([
-        Constraint::Length(5),
-        Constraint::Min(0),
         Constraint::Length(2),
+        Constraint::Min(0),
+        Constraint::Length(1),
     ])
     .split(frame.area());
 
     draw_header(frame, outer[0], loaded, total, state);
 
-    let body = if outer[1].width >= 124 {
-        Layout::horizontal([Constraint::Percentage(68), Constraint::Percentage(32)]).split(outer[1])
-    } else {
-        Layout::vertical([Constraint::Percentage(60), Constraint::Percentage(40)]).split(outer[1])
-    };
-
-    draw_table(frame, body[0], state);
-    draw_detail(frame, body[1], state);
+    draw_table(frame, outer[1], state);
     draw_footer(frame, outer[2]);
 }
 
@@ -174,65 +164,26 @@ fn draw_header(
     total: usize,
     state: &PaneSwitcherState,
 ) {
+    let header = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(area);
+
+    let snapshot = state.rows.get(state.selected).map(|entry| &entry.snapshot);
     let status = if total == 0 {
-        "empty".to_string()
+        "empty"
     } else if loaded >= total {
-        "ready".to_string()
+        "ready"
     } else {
-        format!("loading {loaded}/{total}")
+        "loading"
     };
-    let selected = state
-        .rows
-        .get(state.selected)
-        .map(|entry| truncate(&entry.snapshot.session_name, 28))
-        .unwrap_or_else(|| "none".to_string());
 
-    let title = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(
-                "SWARMUX",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled(
-                "PANES",
-                Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("state ", Style::default().fg(MUTED)),
-            Span::styled(status, Style::default().fg(WARN)),
-            Span::raw("  "),
-            Span::styled("selected ", Style::default().fg(MUTED)),
-            Span::styled(selected, Style::default().fg(GOOD)),
-        ]),
-        Line::from(vec![
-            Span::styled("keys ", Style::default().fg(MUTED)),
-            Span::styled(
-                "j/k",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" move ", Style::default().fg(MUTED)),
-            Span::styled(
-                "enter",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" switch ", Style::default().fg(MUTED)),
-            Span::styled(
-                "q",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" quit", Style::default().fg(MUTED)),
-        ]),
-    ])
-    .block(
-        Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(MUTED)),
-    )
-    .wrap(Wrap { trim: true });
-
-    frame.render_widget(title, area);
+    frame.render_widget(Paragraph::new(header_title_line(area.width)), header[0]);
+    frame.render_widget(
+        Paragraph::new(header_summary_line(snapshot, status)).block(
+            Block::default()
+                .borders(Borders::LEFT | Borders::RIGHT)
+                .border_style(Style::default().fg(MUTED)),
+        ),
+        header[1],
+    );
 }
 
 fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
@@ -264,8 +215,6 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
     )
     .block(
         Block::default()
-            .title("Panes")
-            .title_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(MUTED)),
     )
@@ -274,161 +223,34 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
     frame.render_widget(table, area);
 }
 
-fn draw_detail(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
-    let Some(snapshot) = state.rows.get(state.selected).map(|entry| &entry.snapshot) else {
-        let empty = Paragraph::new("No panes")
-            .block(
-                Block::default()
-                    .title("Selected")
-                    .title_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(MUTED)),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(empty, area);
-        return;
-    };
-
-    let loaded = state
-        .rows
-        .get(state.selected)
-        .is_some_and(|entry| entry.metadata_loaded);
-    let git_label = snapshot
-        .git
-        .as_ref()
-        .map(|git| git.label.as_str())
-        .unwrap_or(if loaded { "n/a" } else { "loading" });
-    let repo = snapshot.repo.as_deref().unwrap_or("loading");
-    let branch = snapshot.branch.as_deref().unwrap_or("loading");
-    let task_title = snapshot
-        .task
-        .as_ref()
-        .map(|task| truncate(&task.title, 40))
-        .unwrap_or_else(|| truncate(&snapshot.pane_current_command, 40));
-
-    let detail = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled("selected ", Style::default().fg(MUTED)),
-            Span::styled(
-                task_title,
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("row ", Style::default().fg(MUTED)),
-            Span::styled(pane_row(snapshot), Style::default().fg(TEXT)),
-        ]),
-        Line::from(vec![
-            Span::styled("session ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(&snapshot.session_name, 28),
-                Style::default().fg(GOOD),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("window ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(&snapshot.window_name, 28),
-                Style::default().fg(WARN),
-            ),
-            Span::raw("  "),
-            Span::styled("pane ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(&snapshot.pane_title, 28),
-                Style::default().fg(TEXT),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("repo ", Style::default().fg(MUTED)),
-            Span::styled(truncate(repo, 28), Style::default().fg(GOOD)),
-        ]),
-        Line::from(vec![
-            Span::styled("branch ", Style::default().fg(MUTED)),
-            Span::styled(truncate(branch, 28), Style::default().fg(ACCENT)),
-            Span::raw("  "),
-            Span::styled("git ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(git_label, 30),
-                Style::default().fg(if loaded { GOOD } else { WARN }),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("path ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(&snapshot.pane_current_path, 50),
-                Style::default().fg(TEXT),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("command ", Style::default().fg(MUTED)),
-            Span::styled(
-                truncate(&snapshot.pane_current_command, 50),
-                Style::default().fg(TEXT),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("state ", Style::default().fg(MUTED)),
-            Span::styled(
-                if loaded { "ready" } else { "loading" },
-                Style::default()
-                    .fg(if loaded { GOOD } else { WARN })
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
-            Span::styled("task ", Style::default().fg(MUTED)),
-            Span::styled(
-                snapshot
-                    .task
-                    .as_ref()
-                    .map(|task| task_state_label(&task.state))
-                    .unwrap_or("unmanaged"),
-                Style::default().fg(if snapshot.task.is_some() {
-                    ACCENT
-                } else {
-                    MUTED
-                }),
-            ),
-        ]),
-    ])
-    .block(
-        Block::default()
-            .title("Selected")
-            .title_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(MUTED)),
-    )
-    .wrap(Wrap { trim: true });
-
-    frame.render_widget(detail, area);
+fn draw_footer(frame: &mut Frame<'_>, area: Rect) {
+    frame.render_widget(Paragraph::new(footer_line()), area);
 }
 
-fn draw_footer(frame: &mut Frame<'_>, area: Rect) {
-    let footer = Paragraph::new(vec![Line::from(vec![
-        Span::styled(
-            "enter",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" activates the selected pane", Style::default().fg(MUTED)),
-        Span::raw("  "),
-        Span::styled(
-            "Esc",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" or ", Style::default().fg(MUTED)),
-        Span::styled(
-            "q",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" quits", Style::default().fg(MUTED)),
-    ])])
-    .block(
-        Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(MUTED)),
-    )
-    .wrap(Wrap { trim: true });
+fn header_title_line(width: u16) -> Line<'static> {
+    let title = "SWARMUX PANES";
+    let title_len = title.chars().count();
+    let min_len = title_len + 4;
 
-    frame.render_widget(footer, area);
+    if (width as usize) < min_len {
+        return Line::from(vec![Span::styled(
+            title,
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        )]);
+    }
+
+    let fill = "─".repeat(width as usize - min_len);
+
+    Line::from(vec![
+        Span::styled("┌ ", Style::default().fg(MUTED)),
+        Span::styled(
+            title,
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" ", Style::default().fg(MUTED)),
+        Span::styled(fill, Style::default().fg(MUTED)),
+        Span::styled("┐", Style::default().fg(MUTED)),
+    ])
 }
 
 struct TerminalSession {

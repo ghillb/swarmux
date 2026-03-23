@@ -10,6 +10,7 @@ mod overview_tui_render;
 mod panes;
 mod panes_support;
 mod panes_tui;
+mod panes_tui_detail;
 mod panes_tui_render;
 mod runtime;
 mod schema;
