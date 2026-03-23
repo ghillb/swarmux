@@ -147,10 +147,10 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 ## tmux popup mapping
 
-Use this mapping to open a snapshot popup and keep it open until Enter:
+Use this mapping to open the live dashboard in a borderless full-screen popup:
 
 ```tmux
-bind -n <key> display-popup -T "Swarmux" -w 90% -h 80% -E "sh -lc 'swarmux overview --tui'"
+bind -n <key> display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux overview --tui'"
 ```
 
 Use left/right to switch between the `Overview`, `Operational`, and `Client All` tabs.
