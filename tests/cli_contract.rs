@@ -35,6 +35,17 @@ fn overview_help_exposes_tui_mode() {
 }
 
 #[test]
+fn panes_switch_help_exposes_tui_mode() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["panes", "switch", "--help"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--tui"))
+        .stdout(predicate::str::contains("--pane-id"));
+}
+
+#[test]
 fn submit_supports_raw_json_payloads_in_dry_run_mode() {
     let payload = r#"{
       "title":"Implement acceptance criteria",

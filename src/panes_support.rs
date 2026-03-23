@@ -38,6 +38,13 @@ pub(crate) struct GitInfo {
     pub summary: PaneGitSummary,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct GitContext {
+    pub repo_root: String,
+    pub repo: String,
+    pub branch: Option<String>,
+}
+
 pub(crate) fn list_tasks(store: &Store) -> Result<Vec<TaskRecord>> {
     match store.paths().backend {
         BackendKind::Files => store.list(),
@@ -45,8 +52,22 @@ pub(crate) fn list_tasks(store: &Store) -> Result<Vec<TaskRecord>> {
     }
 }
 
-pub(crate) fn list_tmux_panes() -> Result<Vec<RawPane>> {
-    let raw = run_tmux(["list-panes", "-a", "-F", PANE_LIST_FORMAT])?;
+pub(crate) fn list_tmux_panes(filter: Option<&str>) -> Result<Vec<RawPane>> {
+    let mut command = Command::new("tmux");
+    command.args(["list-panes", "-a", "-F", PANE_LIST_FORMAT]);
+    if let Some(filter) = filter {
+        command.args(["-f", filter]);
+    }
+
+    let output = command.output().context("failed to run tmux")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "tmux failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).into_owned();
     let mut panes = Vec::new();
 
     for line in raw.lines().filter(|line| !line.trim().is_empty()) {
@@ -69,11 +90,7 @@ pub(crate) fn list_tmux_panes() -> Result<Vec<RawPane>> {
 }
 
 pub(crate) fn git_info(path: &str) -> Result<GitInfo> {
-    let repo_root = run_git_optional(["-C", path, "rev-parse", "--show-toplevel"])?
-        .ok_or_else(|| anyhow!("not a git repo"))?;
-    let branch = run_git_optional(["-C", path, "branch", "--show-current"])?
-        .map(|branch| branch.trim().to_string())
-        .filter(|branch| !branch.is_empty());
+    let context = git_context(path)?;
     let status = run_git_optional([
         "-C",
         path,
@@ -86,13 +103,27 @@ pub(crate) fn git_info(path: &str) -> Result<GitInfo> {
     let staged_diff =
         run_git_optional(["-C", path, "diff", "--cached", "--numstat"])?.unwrap_or_default();
     let summary = parse_git_summary(&status, &tracked_diff, &staged_diff);
-    let repo = repo_name(&repo_root);
 
     Ok(GitInfo {
+        repo_root: context.repo_root,
+        repo: context.repo,
+        branch: context.branch,
+        summary,
+    })
+}
+
+pub(crate) fn git_context(path: &str) -> Result<GitContext> {
+    let repo_root = run_git_optional(["-C", path, "rev-parse", "--show-toplevel"])?
+        .ok_or_else(|| anyhow!("not a git repo"))?;
+    let branch = run_git_optional(["-C", path, "branch", "--show-current"])?
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    let repo = repo_name(&repo_root);
+
+    Ok(GitContext {
         repo_root,
         repo,
         branch,
-        summary,
     })
 }
 

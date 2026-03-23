@@ -86,7 +86,16 @@ pub fn run(store: &Store, output: OutputFormat, args: PanesArgs) -> Result<()> {
             let outcome = sync_tmux_meta(store)?;
             emit(&output, &outcome)
         }
-        Some(PanesCommand::Switch) => switch(store, output),
+        Some(PanesCommand::Switch(args)) => {
+            if args.tui {
+                if matches!(output, OutputFormat::Json) {
+                    return Err(anyhow!("panes switch --tui requires text output"));
+                }
+                return crate::panes_tui::run(store, args.pane_id.as_deref());
+            }
+
+            switch(store, output)
+        }
         None => {
             let response = list_panes(store)?;
             emit(&output, &response)
@@ -273,7 +282,7 @@ fn build_panes(store: &Store) -> Result<Vec<PaneSnapshot>> {
         .collect::<BTreeMap<_, _>>();
 
     let current_pane = std::env::var("TMUX_PANE").ok();
-    let raw_panes = list_tmux_panes()?;
+    let raw_panes = list_tmux_panes(None)?;
     let mut panes = raw_panes
         .into_iter()
         .map(|raw| {

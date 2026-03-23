@@ -39,7 +39,8 @@ pub fn schema_json() -> Value {
                     {
                         "name": "switch",
                         "json_input": false,
-                        "mutating": true
+                        "mutating": true,
+                        "supports_tui": true
                     }
                 ]
             },

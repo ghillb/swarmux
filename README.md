@@ -140,7 +140,7 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 `swarmux overview --tui` is the interactive overview dashboard.
 
-`swarmux panes switch` owns the pane-tree popup path. Keep any other popup/window presentation in your tmux config; for example, pair `swarmux panes sync-tmux-meta` with tmux `choose-tree` or wrap `swarmux attach <id>` in your own bindings.
+`swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the async custom switcher from a tmux popup bind.
 
 Canonical state configuration can also live in `config.toml`:
 

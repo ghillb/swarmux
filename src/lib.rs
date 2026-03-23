@@ -9,6 +9,8 @@ mod overview_tui_helpers;
 mod overview_tui_render;
 mod panes;
 mod panes_support;
+mod panes_tui;
+mod panes_tui_render;
 mod runtime;
 mod schema;
 mod store;

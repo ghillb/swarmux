@@ -179,7 +179,13 @@ Pane-first tree popup:
 bind -n C-M-Space run-shell "swarmux panes switch"
 ```
 
-`swarmux panes switch` owns the pane-tree popup. Keep other popup/window presentation in tmux itself. `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
+Native tmux tree stays on `swarmux panes switch`. For the async custom switcher, launch the TUI in a popup and pass the source pane id through:
+
+```tmux
+bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes switch --tui --pane-id \"#{pane_id}\"'"
+```
+
+`swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
 
 Task-scoped wait and watch:
 

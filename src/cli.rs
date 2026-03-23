@@ -251,7 +251,16 @@ pub struct PanesArgs {
 #[derive(Debug, Subcommand)]
 pub enum PanesCommand {
     SyncTmuxMeta,
-    Switch,
+    Switch(SwitchArgs),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct SwitchArgs {
+    #[arg(long)]
+    pub tui: bool,
+
+    #[arg(long)]
+    pub pane_id: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]
