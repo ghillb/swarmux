@@ -209,7 +209,7 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
             Cell::from(" "),
             Cell::from("Session"),
             Cell::from("Window"),
-            Cell::from("Command"),
+            Cell::from("Title"),
             Cell::from("Repo"),
             Cell::from("Git"),
         ])

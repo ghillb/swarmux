@@ -145,7 +145,7 @@ impl PaneEntry {
                 18,
             )),
             Cell::from(crate::overview_tui_helpers::truncate(
-                &self.snapshot.pane_current_command,
+                &self.snapshot.pane_title,
                 24,
             )),
             Cell::from(row_repo_line(&self.snapshot)),
