@@ -38,6 +38,8 @@ pub struct FileConfig {
     #[serde(default)]
     pub tmux: TmuxConfig,
     #[serde(default)]
+    pub ui: UiConfig,
+    #[serde(default)]
     pub connected: ConnectedConfig,
     #[serde(default)]
     pub agents: BTreeMap<String, AgentConfig>,
@@ -53,6 +55,22 @@ impl TmuxConfig {
     pub fn ignore_filter(&self) -> String {
         tmux_session_ignore_filter(&self.session_ignore)
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UiConfig {
+    #[serde(default)]
+    pub pane_switcher_highlight: PaneSwitcherHighlight,
+    #[serde(default)]
+    pub pane_switcher_show_arrow: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaneSwitcherHighlight {
+    Solid,
+    #[default]
+    Underline,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -249,5 +267,29 @@ session_ignore = ["alpha-*", "beta-*"]
         let config = load_file_config(&path).unwrap();
 
         assert!(config.tmux.session_ignore.is_empty());
+        assert!(matches!(
+            config.ui.pane_switcher_highlight,
+            PaneSwitcherHighlight::Underline
+        ));
+        assert!(!config.ui.pane_switcher_show_arrow);
+    }
+
+    #[test]
+    fn file_config_loads_pane_switcher_highlight_mode() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[ui]\npane_switcher_highlight = \"solid\"\npane_switcher_show_arrow = true\n",
+        )
+        .unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert!(matches!(
+            config.ui.pane_switcher_highlight,
+            PaneSwitcherHighlight::Solid
+        ));
+        assert!(config.ui.pane_switcher_show_arrow);
     }
 }

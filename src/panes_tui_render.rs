@@ -1,3 +1,4 @@
+use crate::config::PaneSwitcherHighlight;
 use crate::panes::PaneSnapshot;
 use crate::panes_tui::PaneSwitcherState;
 use crate::panes_tui::spawn_hydrator;
@@ -14,7 +15,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
 use std::io::{self, IsTerminal};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -32,14 +33,23 @@ pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
 
     let mut session = TerminalSession::new()?;
     let mut state = PaneSwitcherState::load(store, source_pane_id)?;
+    let highlight = store.paths().settings.ui.pane_switcher_highlight;
+    let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
     let (tx, rx) = mpsc::channel();
     spawn_hydrator(state.rows.clone(), tx);
     let mut selected = state.initial_selected(source_pane_id);
     state.selected = selected;
 
-    session
-        .terminal
-        .draw(|frame| draw(frame, &state, state.loaded_count, state.rows.len()))?;
+    session.terminal.draw(|frame| {
+        draw(
+            frame,
+            &state,
+            state.loaded_count,
+            state.rows.len(),
+            highlight,
+            show_arrow,
+        )
+    })?;
 
     loop {
         let mut redraw = false;
@@ -68,9 +78,16 @@ pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
         }
 
         if redraw {
-            session
-                .terminal
-                .draw(|frame| draw(frame, &state, state.loaded_count, state.rows.len()))?;
+            session.terminal.draw(|frame| {
+                draw(
+                    frame,
+                    &state,
+                    state.loaded_count,
+                    state.rows.len(),
+                    highlight,
+                    show_arrow,
+                )
+            })?;
         }
     }
 
@@ -90,14 +107,22 @@ fn handle_key(key: KeyEvent, state: &mut PaneSwitcherState, selected: &mut usize
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::Quit,
         KeyCode::Up | KeyCode::Char('k') => {
             if !state.rows.is_empty() {
-                *selected = selected.saturating_sub(1);
+                *selected = if *selected == 0 {
+                    state.rows.len() - 1
+                } else {
+                    *selected - 1
+                };
             }
             state.selected = *selected;
             KeyAction::None
         }
         KeyCode::Down | KeyCode::Char('j') => {
             if !state.rows.is_empty() {
-                *selected = (*selected + 1).min(state.rows.len() - 1);
+                *selected = if *selected + 1 >= state.rows.len() {
+                    0
+                } else {
+                    *selected + 1
+                };
             }
             state.selected = *selected;
             KeyAction::None
@@ -143,7 +168,14 @@ fn run_tmux<const N: usize>(args: [&str; N]) -> Result<()> {
     Ok(())
 }
 
-fn draw(frame: &mut Frame<'_>, state: &PaneSwitcherState, loaded: usize, total: usize) {
+fn draw(
+    frame: &mut Frame<'_>,
+    state: &PaneSwitcherState,
+    loaded: usize,
+    total: usize,
+    highlight: PaneSwitcherHighlight,
+    show_arrow: bool,
+) {
     let outer = Layout::vertical([
         Constraint::Length(2),
         Constraint::Min(0),
@@ -153,7 +185,7 @@ fn draw(frame: &mut Frame<'_>, state: &PaneSwitcherState, loaded: usize, total: 
 
     draw_header(frame, outer[0], loaded, total, state);
 
-    draw_table(frame, outer[1], state);
+    draw_table(frame, outer[1], state, highlight, show_arrow);
     draw_footer(frame, outer[2]);
 }
 
@@ -186,12 +218,18 @@ fn draw_header(
     );
 }
 
-fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
+fn draw_table(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &PaneSwitcherState,
+    highlight: PaneSwitcherHighlight,
+    show_arrow: bool,
+) {
     let rows = state
         .rows
         .iter()
         .enumerate()
-        .map(|(index, entry)| entry.row_cells(index == state.selected))
+        .map(|(index, entry)| entry.row_cells(index == state.selected, highlight, show_arrow))
         .collect::<Vec<_>>();
     let table = Table::new(
         rows,
@@ -222,11 +260,8 @@ fn draw_table(frame: &mut Frame<'_>, area: Rect, state: &PaneSwitcherState) {
     )
     .column_spacing(1);
 
-    frame.render_widget(table, area);
-}
-
-fn draw_footer(frame: &mut Frame<'_>, area: Rect) {
-    frame.render_widget(Paragraph::new(footer_line()), area);
+    let mut table_state = TableState::new().with_selected(Some(state.selected));
+    frame.render_stateful_widget(table, area, &mut table_state);
 }
 
 fn header_title_line(width: u16) -> Line<'static> {
@@ -255,6 +290,10 @@ fn header_title_line(width: u16) -> Line<'static> {
     ])
 }
 
+fn draw_footer(frame: &mut Frame<'_>, area: Rect) {
+    frame.render_widget(Paragraph::new(footer_line()), area);
+}
+
 struct TerminalSession {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
 }
@@ -275,5 +314,122 @@ impl Drop for TerminalSession {
         let _ = disable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen, Show);
         let _ = self.terminal.show_cursor();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::PaneSwitcherHighlight;
+    use crate::panes::PaneSnapshot;
+    use crate::panes_tui::PaneEntry;
+    use crate::panes_tui::PaneSwitcherState;
+
+    fn entry(name: &str) -> PaneEntry {
+        PaneEntry {
+            snapshot: PaneSnapshot {
+                current: false,
+                managed_by_swarmux: false,
+                session_name: name.to_string(),
+                window_id: "@1".to_string(),
+                window_index: 0,
+                window_name: "window".to_string(),
+                pane_id: format!("%{name}"),
+                pane_index: 0,
+                pane_active: true,
+                pane_current_path: "/tmp".to_string(),
+                pane_current_command: "bash".to_string(),
+                pane_title: "pane".to_string(),
+                task: None,
+                repo_root: None,
+                repo: None,
+                branch: None,
+                git: None,
+                label: String::new(),
+            },
+            metadata_loaded: false,
+        }
+    }
+
+    #[test]
+    fn handle_key_wraps_down_from_last_row_to_first() {
+        let mut state = PaneSwitcherState {
+            rows: vec![entry("a"), entry("b"), entry("c")],
+            selected: 2,
+            loaded_count: 0,
+        };
+        let mut selected = 2;
+
+        let action = handle_key(
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE),
+            &mut state,
+            &mut selected,
+        );
+
+        assert!(matches!(action, KeyAction::None));
+        assert_eq!(selected, 0);
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn handle_key_wraps_up_from_first_row_to_last() {
+        let mut state = PaneSwitcherState {
+            rows: vec![entry("a"), entry("b"), entry("c")],
+            selected: 0,
+            loaded_count: 0,
+        };
+        let mut selected = 0;
+
+        let action = handle_key(
+            KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE),
+            &mut state,
+            &mut selected,
+        );
+
+        assert!(matches!(action, KeyAction::None));
+        assert_eq!(selected, 2);
+        assert_eq!(state.selected, 2);
+    }
+
+    #[test]
+    fn solid_and_underline_are_distinct_styles() {
+        let entry = PaneEntry {
+            snapshot: PaneSnapshot {
+                current: false,
+                managed_by_swarmux: false,
+                session_name: "session".to_string(),
+                window_id: "@1".to_string(),
+                window_index: 0,
+                window_name: "window".to_string(),
+                pane_id: "%1".to_string(),
+                pane_index: 0,
+                pane_active: true,
+                pane_current_path: "/tmp".to_string(),
+                pane_current_command: "bash".to_string(),
+                pane_title: "pane".to_string(),
+                task: None,
+                repo_root: None,
+                repo: None,
+                branch: None,
+                git: None,
+                label: String::new(),
+            },
+            metadata_loaded: false,
+        };
+
+        let solid = ratatui::style::Styled::style(&entry.row_cells(
+            true,
+            PaneSwitcherHighlight::Solid,
+            false,
+        ));
+        let underline = ratatui::style::Styled::style(&entry.row_cells(
+            true,
+            PaneSwitcherHighlight::Underline,
+            false,
+        ));
+
+        assert_eq!(solid.bg, Some(ACCENT));
+        assert_eq!(underline.bg, None);
+        assert!(underline.add_modifier.contains(Modifier::UNDERLINED));
     }
 }

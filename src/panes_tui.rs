@@ -1,3 +1,4 @@
+use crate::config::PaneSwitcherHighlight;
 use crate::model::TaskRecord;
 use crate::panes::{PaneGitSummary, PaneSnapshot};
 use crate::panes_support::{
@@ -121,13 +122,30 @@ impl PaneSwitcherState {
 }
 
 impl PaneEntry {
-    pub(crate) fn row_cells(&self, selected: bool) -> Row<'static> {
-        let marker = if self.snapshot.current { "●" } else { " " };
+    pub(crate) fn row_cells(
+        &self,
+        selected: bool,
+        mode: PaneSwitcherHighlight,
+        show_arrow: bool,
+    ) -> Row<'static> {
+        let marker = if selected && show_arrow {
+            "▶"
+        } else if self.snapshot.current {
+            "●"
+        } else {
+            " "
+        };
         let style = if selected {
-            Style::default()
-                .bg(ACCENT)
-                .fg(SURFACE)
-                .add_modifier(Modifier::BOLD)
+            match mode {
+                PaneSwitcherHighlight::Solid => Style::default()
+                    .bg(ACCENT)
+                    .fg(SURFACE)
+                    .add_modifier(Modifier::BOLD),
+                PaneSwitcherHighlight::Underline => Style::default()
+                    .fg(ACCENT)
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::UNDERLINED),
+            }
         } else if self.snapshot.current {
             Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
         } else {
