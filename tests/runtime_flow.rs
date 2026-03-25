@@ -673,23 +673,25 @@ fn panes_lists_and_syncs_tmux_metadata() {
     assert_eq!(panes["counts"]["managed_panes"], 1);
     assert_eq!(panes["counts"]["dirty_panes"], 1);
     assert_eq!(panes["current_pane"], "%42");
-    assert_eq!(panes["panes"][0]["current"], true);
-    assert_eq!(panes["panes"][0]["managed_by_swarmux"], true);
-    assert_eq!(panes["panes"][0]["task"]["id"], task_id);
+    assert_eq!(panes["panes"][0]["current"], false);
+    assert_eq!(panes["panes"][0]["managed_by_swarmux"], false);
+    assert_eq!(panes["panes"][1]["current"], true);
+    assert_eq!(panes["panes"][1]["managed_by_swarmux"], true);
+    assert_eq!(panes["panes"][1]["task"]["id"], task_id);
     assert!(
-        panes["panes"][0]["label"]
+        panes["panes"][1]["label"]
             .as_str()
             .unwrap()
             .contains("Codex pane")
     );
     assert!(
-        panes["panes"][0]["label"]
+        panes["panes"][1]["label"]
             .as_str()
             .unwrap()
             .contains("feature/panes")
     );
     assert!(
-        panes["panes"][0]["git"]["label"]
+        panes["panes"][1]["git"]["label"]
             .as_str()
             .unwrap()
             .contains("chg1")

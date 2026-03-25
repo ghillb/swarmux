@@ -43,6 +43,7 @@ fn panes_switch_help_exposes_tui_mode() {
         .success()
         .stdout(predicate::str::contains("--tui"))
         .stdout(predicate::str::contains("--tui-sidebar"))
+        .stdout(predicate::str::contains("--launch-sidebar"))
         .stdout(predicate::str::contains("--pane-id"));
 }
 

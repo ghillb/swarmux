@@ -164,7 +164,12 @@ tmux source-file ~/.config/tmux/tmux.conf
 `overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
 Use `swarmux overview --tui` for the interactive dashboard and `swarmux overview --once` for a snapshot.
 Use `swarmux --output json panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
-The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions.
+The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions. The custom switchers also have per-mode current-session filters:
+
+- `[ui].pane_switcher_current_session_only` for `--tui`
+- `[ui].pane_switcher_sidebar_current_session_only` for `--tui-sidebar`
+
+Press `s` inside either custom switcher to toggle that filter at runtime.
 
 Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 
@@ -185,13 +190,13 @@ Native tmux tree stays on `swarmux panes switch`. For the async custom switcher,
 bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes switch --tui --pane-id \"#{pane_id}\"'"
 ```
 
-For the sidebar variant, use a horizontal split and close that pane after the switcher exits:
+For the sidebar variant, use the Rust launcher and let the sidebar TUI close its split automatically:
 
 ```tmux
-bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --tui-sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
+bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{pane_id}\""
 ```
 
-`swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.
+`swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks. `--tui-sidebar` is the actual sidebar UI; `--launch-sidebar` is only the tmux-side launcher.
 
 Task-scoped wait and watch:
 

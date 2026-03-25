@@ -184,23 +184,8 @@ pub(crate) fn build_label(
     segments.join(" | ")
 }
 
-pub(crate) fn pane_sort_key(pane: &PaneSnapshot) -> (u8, u8, u8, String, i64, i64, String) {
-    let current = if pane.current { 0 } else { 1 };
-    let state_rank = pane
-        .task
-        .as_ref()
-        .map(|task| match task.state {
-            TaskState::WaitingInput => 0,
-            TaskState::Running | TaskState::Dispatching => 1,
-            TaskState::Queued => 2,
-            TaskState::Succeeded | TaskState::Failed | TaskState::Canceled => 3,
-        })
-        .unwrap_or(4);
-    let managed = if pane.managed_by_swarmux { 0 } else { 1 };
+pub(crate) fn pane_sort_key(pane: &PaneSnapshot) -> (String, i64, i64, String) {
     (
-        current,
-        state_rank,
-        managed,
         pane.session_name.clone(),
         pane.window_index,
         pane.pane_index,
@@ -507,4 +492,73 @@ fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::panes::PaneSnapshot;
+
+    fn snapshot(
+        session: &str,
+        window_index: i64,
+        pane_index: i64,
+        pane_id: &str,
+        current: bool,
+    ) -> PaneSnapshot {
+        PaneSnapshot {
+            current,
+            managed_by_swarmux: false,
+            session_name: session.to_string(),
+            window_id: format!("@{window_index}"),
+            window_index,
+            window_name: format!("win{window_index}"),
+            pane_id: pane_id.to_string(),
+            pane_index,
+            pane_active: true,
+            pane_current_path: "/tmp".to_string(),
+            pane_current_command: "bash".to_string(),
+            pane_title: "pane".to_string(),
+            task: None,
+            repo_root: None,
+            repo: None,
+            branch: None,
+            git: None,
+            label: String::new(),
+        }
+    }
+
+    #[test]
+    fn pane_sort_key_orders_by_session_then_window_then_pane() {
+        let mut panes = [
+            snapshot("s2", 1, 2, "%4", false),
+            snapshot("s1", 1, 2, "%2", true),
+            snapshot("s2", 1, 1, "%3", false),
+            snapshot("s1", 1, 1, "%1", false),
+        ];
+
+        panes.sort_by_key(pane_sort_key);
+
+        let ordered = panes
+            .iter()
+            .map(|pane| {
+                (
+                    pane.session_name.as_str(),
+                    pane.window_index,
+                    pane.pane_index,
+                    pane.current,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered,
+            vec![
+                ("s1", 1, 1, false),
+                ("s1", 1, 2, true),
+                ("s2", 1, 1, false),
+                ("s2", 1, 2, false),
+            ]
+        );
+    }
 }

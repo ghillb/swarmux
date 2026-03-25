@@ -140,13 +140,16 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 `swarmux overview --tui` is the interactive overview dashboard.
 
-`swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the full-screen custom switcher. `swarmux panes switch --tui-sidebar --pane-id "#{pane_id}"` renders the condensed split-pane sidebar.
+`swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the full-screen custom switcher. `swarmux panes switch --tui-sidebar --pane-id "#{pane_id}"` renders the sidebar TUI. `swarmux panes switch --launch-sidebar --pane-id "#{pane_id}"` is the tmux-side launcher that opens the split pane for that sidebar.
 
-Example tmux bind for the sidebar:
+Example tmux binds:
 
 ```tmux
-bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --tui-sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
+bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes switch --tui --pane-id \"#{pane_id}\"'"
+bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{pane_id}\""
 ```
+
+The sidebar closes on `q` or `Esc` and the launched split pane is cleaned up automatically.
 
 Canonical state configuration can also live in `config.toml`:
 
@@ -160,6 +163,18 @@ session_ignore = ["ft-*", "git-*", "nvim-*", "bv-*"]
 ```
 
 `tmux.session_ignore` is optional. Leave it unset to show all sessions; set it to match your tmux workspace filters if you want the pane switcher to hide those sessions too.
+
+The custom switchers also have per-mode current-session filters:
+
+- `[ui].pane_switcher_current_session_only` for `--tui`
+- `[ui].pane_switcher_sidebar_current_session_only` for `--tui-sidebar`
+
+Press `s` inside either custom switcher to toggle the current-session filter at runtime.
+
+The switcher row style is also configurable:
+
+- `[ui].pane_switcher_highlight = "underline" | "solid"`
+- `[ui].pane_switcher_show_arrow = true | false`
 
 Environment variables still override config values:
 

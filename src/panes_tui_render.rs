@@ -23,6 +23,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
+const SIDEBAR_AUTOCLOSE_ENV: &str = "SWARMUX_TUI_SIDEBAR_AUTOCLOSE";
 
 const MUTED: Color = Color::Rgb(134, 144, 160);
 const ACCENT: Color = Color::Rgb(88, 214, 255);
@@ -49,99 +50,115 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
     }
 
     let mut session = TerminalSession::new()?;
-    let sidebar_pane_id = match mode {
-        ViewMode::Fullscreen => None,
-        ViewMode::Sidebar => std::env::var("TMUX_PANE").ok(),
-    };
-    let current_pane_id = match mode {
-        ViewMode::Fullscreen => None,
-        ViewMode::Sidebar => source_pane_id.or(sidebar_pane_id.as_deref()),
-    };
-    let current_session_only = match mode {
-        ViewMode::Fullscreen => store.paths().settings.ui.pane_switcher_current_session_only,
-        ViewMode::Sidebar => {
-            store
-                .paths()
-                .settings
-                .ui
-                .pane_switcher_sidebar_current_session_only
-        }
-    };
-    let mut state = PaneSwitcherState::load(
-        store,
-        current_pane_id,
-        sidebar_pane_id.as_deref(),
-        current_session_only,
-    )?;
-    let highlight = store.paths().settings.ui.pane_switcher_highlight;
-    let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
-    let show_session = store.paths().settings.ui.pane_switcher_sidebar_show_session;
-    let draw_options = DrawOptions {
-        mode,
-        highlight,
-        show_arrow,
-        show_session,
-    };
-    let (tx, rx) = mpsc::channel();
-    spawn_hydrator(state.all_rows.clone(), tx);
-    let mut selected = state.initial_selected(source_pane_id);
-    state.selected = selected;
+    let sidebar_autoclose =
+        matches!(mode, ViewMode::Sidebar) && std::env::var_os(SIDEBAR_AUTOCLOSE_ENV).is_some();
+    let result = (|| -> Result<()> {
+        let tmux_pane_id = std::env::var("TMUX_PANE").ok();
+        let current_pane_id = resolve_current_pane_id(source_pane_id, tmux_pane_id.clone());
+        let sidebar_pane_id = match mode {
+            ViewMode::Fullscreen => None,
+            ViewMode::Sidebar => tmux_pane_id,
+        };
+        let current_session_only = match mode {
+            ViewMode::Fullscreen => store.paths().settings.ui.pane_switcher_current_session_only,
+            ViewMode::Sidebar => {
+                store
+                    .paths()
+                    .settings
+                    .ui
+                    .pane_switcher_sidebar_current_session_only
+            }
+        };
+        let mut state = PaneSwitcherState::load(
+            store,
+            current_pane_id.as_deref(),
+            sidebar_pane_id.as_deref(),
+            current_session_only,
+        )?;
+        let highlight = store.paths().settings.ui.pane_switcher_highlight;
+        let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
+        let show_session = store.paths().settings.ui.pane_switcher_sidebar_show_session;
+        let draw_options = DrawOptions {
+            mode,
+            highlight,
+            show_arrow,
+            show_session,
+        };
+        let (tx, rx) = mpsc::channel();
+        spawn_hydrator(state.all_rows.clone(), tx);
+        let mut selected = state.initial_selected(source_pane_id);
+        state.selected = selected;
 
-    session.terminal.draw(|frame| {
-        draw(
-            frame,
-            &state,
-            state.loaded_count,
-            state.rows.len(),
-            &draw_options,
-        )
-    })?;
+        session.terminal.draw(|frame| {
+            draw(
+                frame,
+                &state,
+                state.loaded_count,
+                state.rows.len(),
+                &draw_options,
+            )
+        })?;
 
-    loop {
-        let mut redraw = false;
+        loop {
+            let mut redraw = false;
 
-        while let Ok(update) = rx.try_recv() {
-            if state.apply_update(update) {
-                selected = state.clamp_selected(selected);
-                state.selected = selected;
-                redraw = true;
+            while let Ok(update) = rx.try_recv() {
+                if state.apply_update(update) {
+                    selected = state.clamp_selected(selected);
+                    state.selected = selected;
+                    redraw = true;
+                }
+            }
+
+            if event::poll(POLL_INTERVAL)? {
+                match event::read()? {
+                    Event::Key(key) => match handle_key(key, &mut state, &mut selected) {
+                        KeyAction::Quit => break,
+                        KeyAction::Activate(target) => {
+                            activate_pane(&target)?;
+                            break;
+                        }
+                        KeyAction::ToggleSessionFilter => {
+                            state.toggle_current_session_only();
+                            selected = state.selected;
+                            redraw = true;
+                        }
+                        KeyAction::None => redraw = true,
+                    },
+                    Event::Resize(_, _) => redraw = true,
+                    _ => {}
+                }
+            }
+
+            if redraw {
+                session.terminal.draw(|frame| {
+                    draw(
+                        frame,
+                        &state,
+                        state.loaded_count,
+                        state.rows.len(),
+                        &draw_options,
+                    )
+                })?;
             }
         }
 
-        if event::poll(POLL_INTERVAL)? {
-            match event::read()? {
-                Event::Key(key) => match handle_key(key, &mut state, &mut selected) {
-                    KeyAction::Quit => break,
-                    KeyAction::Activate(target) => {
-                        activate_pane(&target)?;
-                        break;
-                    }
-                    KeyAction::ToggleSessionFilter => {
-                        state.toggle_current_session_only();
-                        selected = state.selected;
-                        redraw = true;
-                    }
-                    KeyAction::None => redraw = true,
-                },
-                Event::Resize(_, _) => redraw = true,
-                _ => {}
-            }
-        }
+        Ok(())
+    })();
 
-        if redraw {
-            session.terminal.draw(|frame| {
-                draw(
-                    frame,
-                    &state,
-                    state.loaded_count,
-                    state.rows.len(),
-                    &draw_options,
-                )
-            })?;
-        }
+    drop(session);
+    if sidebar_autoclose {
+        let _ = close_current_tmux_pane();
     }
 
-    Ok(())
+    result
+}
+
+fn resolve_current_pane_id(
+    source_pane_id: Option<&str>,
+    tmux_pane_id: Option<String>,
+) -> Option<String> {
+    source_pane_id.map(str::to_string).or(tmux_pane_id)
 }
 
 #[derive(Debug)]
@@ -203,6 +220,16 @@ fn activate_pane(snapshot: &PaneSnapshot) -> Result<()> {
     run_tmux(["select-window", "-t", &snapshot.window_id])?;
     run_tmux(["select-pane", "-t", &snapshot.pane_id])?;
 
+    Ok(())
+}
+
+fn close_current_tmux_pane() -> Result<()> {
+    let pane_id = match std::env::var("TMUX_PANE") {
+        Ok(value) if !value.is_empty() => value,
+        _ => return Ok(()),
+    };
+
+    run_tmux(["kill-pane", "-t", pane_id.as_str()])?;
     Ok(())
 }
 
@@ -455,6 +482,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn resolve_current_pane_id_prefers_source_then_tmux() {
+        assert_eq!(
+            super::resolve_current_pane_id(Some("%source"), Some("%tmux".to_string())).as_deref(),
+            Some("%source")
+        );
+        assert_eq!(
+            super::resolve_current_pane_id(None, Some("%tmux".to_string())).as_deref(),
+            Some("%tmux")
+        );
+        assert_eq!(super::resolve_current_pane_id(None, None), None);
+    }
+
     fn make_state(rows: Vec<PaneEntry>) -> PaneSwitcherState {
         PaneSwitcherState {
             all_rows: rows.clone(),
@@ -605,9 +645,9 @@ mod tests {
         let text = entry.sidebar_text(60, true, PaneSwitcherHighlight::Underline, true, false);
         assert_eq!(text.lines.len(), 2);
         assert!(format!("{:?}", text.lines[0]).contains("▶ Implement sidebar rendering"));
-        assert!(format!("{:?}", text.lines[1]).contains("  "));
-        assert!(format!("{:?}", text.lines[1]).contains("core@main"));
-        assert!(format!("{:?}", text.lines[1]).contains("chg2"));
+        assert_eq!(text.lines[1].spans[1].content.as_ref(), "core@main");
+        assert_eq!(text.lines[1].spans[2].content.chars().count(), 45);
+        assert_eq!(text.lines[1].spans[3].content.as_ref(), "chg2");
 
         let text_with_session =
             entry.sidebar_text(60, false, PaneSwitcherHighlight::Solid, false, true);

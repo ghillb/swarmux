@@ -85,10 +85,7 @@ pub(crate) fn row_repo_line(snapshot: &PaneSnapshot) -> Line<'static> {
         format!("{repo}@{branch}")
     };
 
-    Line::from(vec![Span::styled(
-        truncate(&repo, 18),
-        Style::default().fg(GOOD),
-    )])
+    Line::from(vec![Span::raw(truncate(&repo, 18))])
 }
 
 pub(crate) fn row_git_line(snapshot: &PaneSnapshot, loaded: bool) -> Line<'static> {

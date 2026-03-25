@@ -261,6 +261,20 @@ impl PaneEntry {
         } else {
             format!("{repo}@{branch}")
         };
+        let mut left_text = repo_text.clone();
+
+        if show_session {
+            left_text.push_str("  ");
+            left_text.push_str(&self.snapshot.session_name);
+        }
+
+        let right_text = git.to_string();
+        let left_text = crate::overview_tui_helpers::truncate(
+            &left_text,
+            width.saturating_sub(2 + right_text.chars().count()).max(1),
+        );
+        let spacer_width =
+            width.saturating_sub(2 + left_text.chars().count() + right_text.chars().count());
 
         let title_style = if selected {
             match mode {
@@ -278,20 +292,11 @@ impl PaneEntry {
             Style::default().fg(TEXT)
         };
 
-        let mut detail_spans = vec![
-            Span::raw("  "),
-            Span::styled(repo_text, Style::default().fg(GOOD)),
-            Span::raw(" | "),
-        ];
-        detail_spans.extend(git_summary_spans(git, self.metadata_loaded));
-
-        if show_session {
-            detail_spans.push(Span::raw(" | "));
-            detail_spans.push(Span::styled(
-                self.snapshot.session_name.clone(),
-                Style::default().fg(TEXT),
-            ));
+        let mut detail_spans = vec![Span::raw("  "), Span::styled(left_text, Style::default())];
+        if spacer_width > 0 {
+            detail_spans.push(Span::raw(" ".repeat(spacer_width)));
         }
+        detail_spans.extend(git_summary_spans(git, self.metadata_loaded));
 
         let detail = Line::from(detail_spans);
         let detail = match mode {

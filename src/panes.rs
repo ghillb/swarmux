@@ -5,6 +5,7 @@ use crate::panes_support::{
     bool_flag, build_label, git_info, list_tasks, list_tmux_panes, pane_counts, pane_row,
     pane_sort_key, runtime_label, set_pane_option, task_state_label,
 };
+use crate::runtime;
 use crate::store::Store;
 use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
@@ -87,6 +88,15 @@ pub fn run(store: &Store, output: OutputFormat, args: PanesArgs) -> Result<()> {
             emit(&output, &outcome)
         }
         Some(PanesCommand::Switch(args)) => {
+            if args.launch_sidebar {
+                if matches!(output, OutputFormat::Json) {
+                    return Err(anyhow!(
+                        "panes switch --launch-sidebar requires text output"
+                    ));
+                }
+                return launch_sidebar(args.pane_id.as_deref());
+            }
+
             if args.tui {
                 if matches!(output, OutputFormat::Json) {
                     return Err(anyhow!("panes switch --tui requires text output"));
@@ -228,6 +238,64 @@ fn switch(store: &Store, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
+fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
+    let context = runtime::current_pane_context(source_pane_id)?;
+    let binary = std::env::current_exe().context("failed to resolve swarmux binary")?;
+    let mut command = Command::new("tmux");
+    command.args([
+        "split-window",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "-h",
+        "-l",
+        "42",
+        "-c",
+        context.pane_current_path.as_str(),
+        "-e",
+        "SWARMUX_TUI_SIDEBAR_AUTOCLOSE=1",
+    ]);
+    command.arg(&binary);
+    command.args([
+        "panes",
+        "switch",
+        "--tui-sidebar",
+        "--pane-id",
+        context.pane_id.as_str(),
+    ]);
+
+    let output = command.output().context("failed to run tmux")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("tmux failed to open the sidebar pane"));
+    }
+
+    let pane_id = String::from_utf8(output.stdout)
+        .context("tmux returned a non-utf8 sidebar pane id")?
+        .trim()
+        .to_string();
+
+    if pane_id.is_empty() {
+        return Err(anyhow!("tmux did not return a sidebar pane id"));
+    }
+
+    let status = Command::new("tmux")
+        .args([
+            "select-pane",
+            "-t",
+            pane_id.as_str(),
+            "-T",
+            "swarmux-sidebar",
+        ])
+        .status()
+        .context("failed to run tmux")?;
+
+    if !status.success() {
+        return Err(anyhow!("tmux failed to label the sidebar pane"));
+    }
+
+    Ok(())
+}
 fn launch_swarmux_tree_popup(filter: &str) -> Result<()> {
     let popup_w = env::var("SWARM_POPUP_W").unwrap_or_else(|_| "96%".to_string());
     let popup_h = env::var("SWARM_POPUP_H").unwrap_or_else(|_| "85%".to_string());
