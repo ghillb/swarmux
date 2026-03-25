@@ -140,7 +140,13 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 `swarmux overview --tui` is the interactive overview dashboard.
 
-`swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the async custom switcher from a tmux popup bind.
+`swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the full-screen custom switcher. `swarmux panes switch --sidebar --pane-id "#{pane_id}"` renders the condensed split-pane sidebar.
+
+Example tmux bind for the sidebar:
+
+```tmux
+bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
+```
 
 Canonical state configuration can also live in `config.toml`:
 

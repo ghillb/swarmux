@@ -21,6 +21,10 @@ pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
     crate::panes_tui_render::run(store, source_pane_id)
 }
 
+pub fn run_sidebar(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
+    crate::panes_tui_render::run_sidebar(store, source_pane_id)
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PaneEntry {
     pub(crate) snapshot: PaneSnapshot,
@@ -43,7 +47,11 @@ pub(crate) enum HydrationUpdate {
 }
 
 impl PaneSwitcherState {
-    pub(crate) fn load(store: &Store, source_pane_id: Option<&str>) -> Result<Self> {
+    pub(crate) fn load(
+        store: &Store,
+        current_pane_id: Option<&str>,
+        excluded_pane_id: Option<&str>,
+    ) -> Result<Self> {
         let tasks = list_tasks(store)?;
         let tasks_by_session = tasks
             .iter()
@@ -55,10 +63,14 @@ impl PaneSwitcherState {
             .collect::<std::collections::BTreeMap<_, _>>();
 
         let filter = store.paths().settings.tmux.ignore_filter();
+        let current_pane_id = current_pane_id
+            .map(str::to_string)
+            .or_else(|| std::env::var("TMUX_PANE").ok());
         let raw_panes = list_tmux_panes(Some(filter.as_str()))?;
         let mut rows = raw_panes
             .into_iter()
-            .map(|raw| build_entry(&raw, &tasks_by_session, source_pane_id))
+            .filter(|raw| excluded_pane_id != Some(raw.pane_id.as_str()))
+            .map(|raw| build_entry(&raw, &tasks_by_session, current_pane_id.as_deref()))
             .collect::<Vec<_>>();
 
         rows.sort_by_key(|entry| pane_sort_key(&entry.snapshot));
@@ -122,20 +134,8 @@ impl PaneSwitcherState {
 }
 
 impl PaneEntry {
-    pub(crate) fn row_cells(
-        &self,
-        selected: bool,
-        mode: PaneSwitcherHighlight,
-        show_arrow: bool,
-    ) -> Row<'static> {
-        let marker = if selected && show_arrow {
-            "▶"
-        } else if self.snapshot.current {
-            "●"
-        } else {
-            " "
-        };
-        let style = if selected {
+    fn row_style(&self, selected: bool, mode: PaneSwitcherHighlight) -> Style {
+        if selected {
             match mode {
                 PaneSwitcherHighlight::Solid => Style::default()
                     .bg(ACCENT)
@@ -150,10 +150,27 @@ impl PaneEntry {
             Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(TEXT)
-        };
+        }
+    }
 
+    fn marker(&self, selected: bool, show_arrow: bool) -> &'static str {
+        if selected && show_arrow {
+            "▶"
+        } else if self.snapshot.current {
+            "●"
+        } else {
+            " "
+        }
+    }
+
+    pub(crate) fn row_cells(
+        &self,
+        selected: bool,
+        mode: PaneSwitcherHighlight,
+        show_arrow: bool,
+    ) -> Row<'static> {
         Row::new(vec![
-            Cell::from(marker),
+            Cell::from(self.marker(selected, show_arrow)),
             Cell::from(crate::overview_tui_helpers::truncate(
                 &self.snapshot.session_name,
                 18,
@@ -169,7 +186,34 @@ impl PaneEntry {
             Cell::from(row_repo_line(&self.snapshot)),
             Cell::from(row_git_line(&self.snapshot, self.metadata_loaded)),
         ])
-        .style(style)
+        .style(self.row_style(selected, mode))
+    }
+
+    pub(crate) fn sidebar_row_cells(
+        &self,
+        selected: bool,
+        mode: PaneSwitcherHighlight,
+        show_arrow: bool,
+        show_session: bool,
+    ) -> Row<'static> {
+        let mut cells = vec![
+            Cell::from(self.marker(selected, show_arrow)),
+            Cell::from(crate::overview_tui_helpers::truncate(
+                &self.snapshot.pane_title,
+                28,
+            )),
+            Cell::from(row_git_line(&self.snapshot, self.metadata_loaded)),
+            Cell::from(row_repo_line(&self.snapshot)),
+        ];
+
+        if show_session {
+            cells.push(Cell::from(crate::overview_tui_helpers::truncate(
+                &self.snapshot.session_name,
+                18,
+            )));
+        }
+
+        Row::new(cells).style(self.row_style(selected, mode))
     }
 }
 

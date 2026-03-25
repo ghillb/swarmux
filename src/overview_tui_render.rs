@@ -70,8 +70,8 @@ fn draw_header(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &Dashboa
 fn draw_tabs(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let tabs = Tabs::new(vec![
         Line::from("Overview"),
-        Line::from("Operational"),
-        Line::from("Client All"),
+        Line::from("Live"),
+        Line::from("All Tasks"),
     ])
     .select(match app.tab {
         Tab::Overview => 0,

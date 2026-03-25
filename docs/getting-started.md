@@ -179,10 +179,16 @@ Pane-first tree popup:
 bind -n C-M-Space run-shell "swarmux panes switch"
 ```
 
-Native tmux tree stays on `swarmux panes switch`. For the async custom switcher, launch the TUI in a popup and pass the source pane id through:
+Native tmux tree stays on `swarmux panes switch`. For the async custom switcher, launch the full-screen TUI in a popup and pass the source pane id through:
 
 ```tmux
 bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes switch --tui --pane-id \"#{pane_id}\"'"
+```
+
+For the sidebar variant, use a horizontal split and close that pane after the switcher exits:
+
+```tmux
+bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
 ```
 
 `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.

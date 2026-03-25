@@ -24,17 +24,47 @@ const POLL_INTERVAL: Duration = Duration::from_millis(80);
 
 const MUTED: Color = Color::Rgb(134, 144, 160);
 const ACCENT: Color = Color::Rgb(88, 214, 255);
+#[derive(Debug, Clone, Copy)]
+enum ViewMode {
+    Fullscreen,
+    Sidebar,
+}
+
 pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
+    run_with_mode(store, source_pane_id, ViewMode::Fullscreen)
+}
+
+pub fn run_sidebar(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
+    run_with_mode(store, source_pane_id, ViewMode::Sidebar)
+}
+
+fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) -> Result<()> {
     if !io::stdout().is_terminal() {
-        return Err(anyhow!(
-            "panes switch --tui requires an interactive terminal"
-        ));
+        return Err(anyhow!(match mode {
+            ViewMode::Fullscreen => "panes switch --tui requires an interactive terminal",
+            ViewMode::Sidebar => "panes switch --sidebar requires an interactive terminal",
+        }));
     }
 
     let mut session = TerminalSession::new()?;
-    let mut state = PaneSwitcherState::load(store, source_pane_id)?;
+    let sidebar_pane_id = match mode {
+        ViewMode::Fullscreen => None,
+        ViewMode::Sidebar => std::env::var("TMUX_PANE").ok(),
+    };
+    let current_pane_id = match mode {
+        ViewMode::Fullscreen => None,
+        ViewMode::Sidebar => source_pane_id.or(sidebar_pane_id.as_deref()),
+    };
+    let mut state = PaneSwitcherState::load(store, current_pane_id, sidebar_pane_id.as_deref())?;
     let highlight = store.paths().settings.ui.pane_switcher_highlight;
     let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
+    let show_session = store.paths().settings.ui.pane_switcher_sidebar_show_session;
+    let draw_options = DrawOptions {
+        mode,
+        highlight,
+        show_arrow,
+        show_session,
+    };
     let (tx, rx) = mpsc::channel();
     spawn_hydrator(state.rows.clone(), tx);
     let mut selected = state.initial_selected(source_pane_id);
@@ -46,8 +76,7 @@ pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
             &state,
             state.loaded_count,
             state.rows.len(),
-            highlight,
-            show_arrow,
+            &draw_options,
         )
     })?;
 
@@ -84,8 +113,7 @@ pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
                     &state,
                     state.loaded_count,
                     state.rows.len(),
-                    highlight,
-                    show_arrow,
+                    &draw_options,
                 )
             })?;
         }
@@ -168,25 +196,48 @@ fn run_tmux<const N: usize>(args: [&str; N]) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct DrawOptions {
+    mode: ViewMode,
+    highlight: PaneSwitcherHighlight,
+    show_arrow: bool,
+    show_session: bool,
+}
+
 fn draw(
     frame: &mut Frame<'_>,
     state: &PaneSwitcherState,
     loaded: usize,
     total: usize,
-    highlight: PaneSwitcherHighlight,
-    show_arrow: bool,
+    options: &DrawOptions,
 ) {
-    let outer = Layout::vertical([
-        Constraint::Length(2),
-        Constraint::Min(0),
-        Constraint::Length(1),
-    ])
-    .split(frame.area());
+    match options.mode {
+        ViewMode::Fullscreen => {
+            let outer = Layout::vertical([
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(frame.area());
 
-    draw_header(frame, outer[0], loaded, total, state);
-
-    draw_table(frame, outer[1], state, highlight, show_arrow);
-    draw_footer(frame, outer[2]);
+            draw_header(frame, outer[0], loaded, total, state);
+            draw_table(
+                frame,
+                outer[1],
+                state,
+                options.highlight,
+                options.show_arrow,
+            );
+            draw_footer(frame, outer[2]);
+        }
+        ViewMode::Sidebar => draw_sidebar(
+            frame,
+            state,
+            options.highlight,
+            options.show_arrow,
+            options.show_session,
+        ),
+    }
 }
 
 fn draw_header(
@@ -264,6 +315,44 @@ fn draw_table(
     frame.render_stateful_widget(table, area, &mut table_state);
 }
 
+fn draw_sidebar(
+    frame: &mut Frame<'_>,
+    state: &PaneSwitcherState,
+    highlight: PaneSwitcherHighlight,
+    show_arrow: bool,
+    show_session: bool,
+) {
+    let rows = state
+        .rows
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.sidebar_row_cells(index == state.selected, highlight, show_arrow, show_session)
+        })
+        .collect::<Vec<_>>();
+
+    let widths = if show_session {
+        vec![
+            Constraint::Length(1),
+            Constraint::Min(18),
+            Constraint::Length(16),
+            Constraint::Length(16),
+            Constraint::Min(12),
+        ]
+    } else {
+        vec![
+            Constraint::Length(1),
+            Constraint::Min(20),
+            Constraint::Length(16),
+            Constraint::Length(16),
+        ]
+    };
+
+    let table = Table::new(rows, widths).column_spacing(1);
+    let mut table_state = TableState::new().with_selected(Some(state.selected));
+    frame.render_stateful_widget(table, frame.area(), &mut table_state);
+}
+
 fn header_title_line(width: u16) -> Line<'static> {
     let title = "SWARMUX PANES";
     let title_len = title.chars().count();
@@ -321,7 +410,7 @@ impl Drop for TerminalSession {
 mod tests {
     use super::*;
     use crate::config::PaneSwitcherHighlight;
-    use crate::panes::PaneSnapshot;
+    use crate::panes::{PaneGitSummary, PaneSnapshot};
     use crate::panes_tui::PaneEntry;
     use crate::panes_tui::PaneSwitcherState;
 
@@ -431,5 +520,50 @@ mod tests {
         assert_eq!(solid.bg, Some(ACCENT));
         assert_eq!(underline.bg, None);
         assert!(underline.add_modifier.contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn sidebar_row_cells_include_git_repo_and_optional_session() {
+        let entry = PaneEntry {
+            snapshot: PaneSnapshot {
+                current: false,
+                managed_by_swarmux: true,
+                session_name: "swarmux-pane-1".to_string(),
+                window_id: "@1".to_string(),
+                window_index: 0,
+                window_name: "window".to_string(),
+                pane_id: "%1".to_string(),
+                pane_index: 0,
+                pane_active: true,
+                pane_current_path: "/tmp/core".to_string(),
+                pane_current_command: "bash".to_string(),
+                pane_title: "Implement sidebar rendering".to_string(),
+                task: None,
+                repo_root: Some("/tmp/core".to_string()),
+                repo: Some("core".to_string()),
+                branch: Some("main".to_string()),
+                git: Some(PaneGitSummary {
+                    dirty: true,
+                    changed_files: 2,
+                    deleted_files: 0,
+                    untracked_files: 0,
+                    insertions: 0,
+                    deletions: 0,
+                    label: "chg2".to_string(),
+                }),
+                label: String::new(),
+            },
+            metadata_loaded: true,
+        };
+
+        let row = entry.sidebar_row_cells(true, PaneSwitcherHighlight::Underline, true, false);
+        let row_debug = format!("{:?}", row);
+        assert!(row_debug.contains("Implement sidebar rendering"));
+        assert!(row_debug.contains("chg2"));
+        assert!(row_debug.contains("core@main"));
+
+        let row_with_session =
+            entry.sidebar_row_cells(false, PaneSwitcherHighlight::Solid, false, true);
+        assert!(format!("{:?}", row_with_session).contains("swarmux-pane-1"));
     }
 }

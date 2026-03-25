@@ -57,12 +57,24 @@ impl TmuxConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct UiConfig {
     #[serde(default)]
     pub pane_switcher_highlight: PaneSwitcherHighlight,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub pane_switcher_show_arrow: bool,
+    #[serde(default)]
+    pub pane_switcher_sidebar_show_session: bool,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            pane_switcher_highlight: PaneSwitcherHighlight::default(),
+            pane_switcher_show_arrow: true,
+            pane_switcher_sidebar_show_session: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -204,6 +216,10 @@ fn parse_backend_kind(raw: &str) -> Result<BackendKind> {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn tmux_session_ignore_filter(patterns: &[String]) -> String {
     let mut clauses = patterns
         .iter()
@@ -271,7 +287,8 @@ session_ignore = ["alpha-*", "beta-*"]
             config.ui.pane_switcher_highlight,
             PaneSwitcherHighlight::Underline
         ));
-        assert!(!config.ui.pane_switcher_show_arrow);
+        assert!(config.ui.pane_switcher_show_arrow);
+        assert!(!config.ui.pane_switcher_sidebar_show_session);
     }
 
     #[test]
@@ -291,5 +308,27 @@ session_ignore = ["alpha-*", "beta-*"]
             PaneSwitcherHighlight::Solid
         ));
         assert!(config.ui.pane_switcher_show_arrow);
+    }
+
+    #[test]
+    fn file_config_can_disable_pane_switcher_arrow() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[ui]\npane_switcher_show_arrow = false\n").unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert!(!config.ui.pane_switcher_show_arrow);
+    }
+
+    #[test]
+    fn file_config_can_enable_sidebar_session_column() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[ui]\npane_switcher_sidebar_show_session = true\n").unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert!(config.ui.pane_switcher_sidebar_show_session);
     }
 }
