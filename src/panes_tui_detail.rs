@@ -59,6 +59,11 @@ pub(crate) fn footer_line() -> Line<'static> {
         ),
         Span::styled(" activates the selected pane  ", Style::default().fg(MUTED)),
         Span::styled(
+            "s",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" toggles session filter  ", Style::default().fg(MUTED)),
+        Span::styled(
             "Esc",
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
@@ -128,6 +133,43 @@ pub(crate) fn git_summary_spans(label: &str, loaded: bool) -> Vec<Span<'static>>
             Style::default().fg(RED).add_modifier(Modifier::BOLD)
         } else if token.starts_with("new") {
             Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
+        } else if let Some(rest) = token.strip_prefix('+') {
+            if let Some((insertions, deletions)) = rest.split_once("/-") {
+                spans.push(Span::styled(
+                    "+",
+                    Style::default().fg(GOOD).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    insertions.to_string(),
+                    Style::default().fg(GOOD).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::raw("/"));
+                spans.push(Span::styled(
+                    "-",
+                    Style::default().fg(RED).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    deletions.to_string(),
+                    Style::default().fg(RED).add_modifier(Modifier::BOLD),
+                ));
+                continue;
+            } else {
+                Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
+            }
+        } else if let Some(rest) = token.strip_prefix('-') {
+            if rest.chars().all(|ch| ch.is_ascii_digit()) {
+                spans.push(Span::styled(
+                    "-",
+                    Style::default().fg(RED).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    rest.to_string(),
+                    Style::default().fg(RED).add_modifier(Modifier::BOLD),
+                ));
+                continue;
+            } else {
+                Style::default().fg(RED).add_modifier(Modifier::BOLD)
+            }
         } else if token.starts_with('+') || token.starts_with('-') {
             Style::default().fg(MUTED)
         } else {
@@ -184,12 +226,17 @@ mod tests {
                 .iter()
                 .map(|span| span.content.as_ref())
                 .collect::<Vec<_>>(),
-            vec!["chg2", " ", "del1", " ", "new4", " ", "+12/-3"]
+            vec![
+                "chg2", " ", "del1", " ", "new4", " ", "+", "12", "/", "-", "3"
+            ]
         );
         assert_eq!(spans[0].style.fg, Some(WARN));
         assert_eq!(spans[2].style.fg, Some(RED));
         assert_eq!(spans[4].style.fg, Some(GOOD));
-        assert_eq!(spans[6].style.fg, Some(MUTED));
+        assert_eq!(spans[6].style.fg, Some(GOOD));
+        assert_eq!(spans[7].style.fg, Some(GOOD));
+        assert_eq!(spans[9].style.fg, Some(RED));
+        assert_eq!(spans[10].style.fg, Some(RED));
     }
 
     #[test]
@@ -336,6 +383,7 @@ mod tests {
         assert!(text.contains("j/k"));
         assert!(text.contains("moves"));
         assert!(text.contains("enter activates the selected pane"));
+        assert!(text.contains("s toggles session filter"));
         assert!(text.contains("Esc or q quits"));
     }
 }

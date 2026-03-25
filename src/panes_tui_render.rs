@@ -15,7 +15,9 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{
+    Block, Borders, Cell, List, ListItem, ListState, Paragraph, Row, Table, TableState,
+};
 use std::io::{self, IsTerminal};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -55,7 +57,22 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
         ViewMode::Fullscreen => None,
         ViewMode::Sidebar => source_pane_id.or(sidebar_pane_id.as_deref()),
     };
-    let mut state = PaneSwitcherState::load(store, current_pane_id, sidebar_pane_id.as_deref())?;
+    let current_session_only = match mode {
+        ViewMode::Fullscreen => store.paths().settings.ui.pane_switcher_current_session_only,
+        ViewMode::Sidebar => {
+            store
+                .paths()
+                .settings
+                .ui
+                .pane_switcher_sidebar_current_session_only
+        }
+    };
+    let mut state = PaneSwitcherState::load(
+        store,
+        current_pane_id,
+        sidebar_pane_id.as_deref(),
+        current_session_only,
+    )?;
     let highlight = store.paths().settings.ui.pane_switcher_highlight;
     let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
     let show_session = store.paths().settings.ui.pane_switcher_sidebar_show_session;
@@ -66,7 +83,7 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
         show_session,
     };
     let (tx, rx) = mpsc::channel();
-    spawn_hydrator(state.rows.clone(), tx);
+    spawn_hydrator(state.all_rows.clone(), tx);
     let mut selected = state.initial_selected(source_pane_id);
     state.selected = selected;
 
@@ -99,6 +116,11 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
                         activate_pane(&target)?;
                         break;
                     }
+                    KeyAction::ToggleSessionFilter => {
+                        state.toggle_current_session_only();
+                        selected = state.selected;
+                        redraw = true;
+                    }
                     KeyAction::None => redraw = true,
                 },
                 Event::Resize(_, _) => redraw = true,
@@ -127,12 +149,14 @@ enum KeyAction {
     None,
     Quit,
     Activate(Box<PaneSnapshot>),
+    ToggleSessionFilter,
 }
 
 fn handle_key(key: KeyEvent, state: &mut PaneSwitcherState, selected: &mut usize) -> KeyAction {
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => KeyAction::Quit,
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::Quit,
+        KeyCode::Char('s') => KeyAction::ToggleSessionFilter,
         KeyCode::Up | KeyCode::Char('k') => {
             if !state.rows.is_empty() {
                 *selected = if *selected == 0 {
@@ -322,35 +346,26 @@ fn draw_sidebar(
     show_arrow: bool,
     show_session: bool,
 ) {
-    let rows = state
+    let area = frame.area();
+    let items = state
         .rows
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            entry.sidebar_row_cells(index == state.selected, highlight, show_arrow, show_session)
+            let text = entry.sidebar_text(
+                area.width as usize,
+                index == state.selected,
+                highlight,
+                show_arrow,
+                show_session,
+            );
+            ListItem::new(text)
         })
         .collect::<Vec<_>>();
-
-    let widths = if show_session {
-        vec![
-            Constraint::Length(1),
-            Constraint::Min(18),
-            Constraint::Length(16),
-            Constraint::Length(16),
-            Constraint::Min(12),
-        ]
-    } else {
-        vec![
-            Constraint::Length(1),
-            Constraint::Min(20),
-            Constraint::Length(16),
-            Constraint::Length(16),
-        ]
-    };
-
-    let table = Table::new(rows, widths).column_spacing(1);
-    let mut table_state = TableState::new().with_selected(Some(state.selected));
-    frame.render_stateful_widget(table, frame.area(), &mut table_state);
+    let list = List::new(items);
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.selected));
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn header_title_line(width: u16) -> Line<'static> {
@@ -440,13 +455,21 @@ mod tests {
         }
     }
 
+    fn make_state(rows: Vec<PaneEntry>) -> PaneSwitcherState {
+        PaneSwitcherState {
+            all_rows: rows.clone(),
+            rows,
+            selected: 0,
+            loaded_count: 0,
+            current_session_only: false,
+            current_session_name: None,
+        }
+    }
+
     #[test]
     fn handle_key_wraps_down_from_last_row_to_first() {
-        let mut state = PaneSwitcherState {
-            rows: vec![entry("a"), entry("b"), entry("c")],
-            selected: 2,
-            loaded_count: 0,
-        };
+        let mut state = make_state(vec![entry("a"), entry("b"), entry("c")]);
+        state.selected = 2;
         let mut selected = 2;
 
         let action = handle_key(
@@ -462,11 +485,7 @@ mod tests {
 
     #[test]
     fn handle_key_wraps_up_from_first_row_to_last() {
-        let mut state = PaneSwitcherState {
-            rows: vec![entry("a"), entry("b"), entry("c")],
-            selected: 0,
-            loaded_count: 0,
-        };
+        let mut state = make_state(vec![entry("a"), entry("b"), entry("c")]);
         let mut selected = 0;
 
         let action = handle_key(
@@ -478,6 +497,33 @@ mod tests {
         assert!(matches!(action, KeyAction::None));
         assert_eq!(selected, 2);
         assert_eq!(state.selected, 2);
+    }
+
+    #[test]
+    fn handle_key_toggles_session_filter_with_s() {
+        let mut current = entry("current");
+        current.snapshot.current = true;
+        let mut state = PaneSwitcherState {
+            all_rows: vec![current.clone(), entry("other")],
+            rows: vec![current],
+            selected: 0,
+            loaded_count: 0,
+            current_session_only: false,
+            current_session_name: Some("current".to_string()),
+        };
+        let mut selected = 0;
+
+        let action = handle_key(
+            KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE),
+            &mut state,
+            &mut selected,
+        );
+
+        assert!(matches!(action, KeyAction::ToggleSessionFilter));
+        state.toggle_current_session_only();
+        assert!(state.current_session_only);
+        assert_eq!(state.rows.len(), 1);
+        assert_eq!(state.rows[0].snapshot.session_name, "current");
     }
 
     #[test]
@@ -523,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_row_cells_include_git_repo_and_optional_session() {
+    fn sidebar_text_uses_two_lines_with_optional_session() {
         let entry = PaneEntry {
             snapshot: PaneSnapshot {
                 current: false,
@@ -556,14 +602,15 @@ mod tests {
             metadata_loaded: true,
         };
 
-        let row = entry.sidebar_row_cells(true, PaneSwitcherHighlight::Underline, true, false);
-        let row_debug = format!("{:?}", row);
-        assert!(row_debug.contains("Implement sidebar rendering"));
-        assert!(row_debug.contains("chg2"));
-        assert!(row_debug.contains("core@main"));
+        let text = entry.sidebar_text(60, true, PaneSwitcherHighlight::Underline, true, false);
+        assert_eq!(text.lines.len(), 2);
+        assert!(format!("{:?}", text.lines[0]).contains("▶ Implement sidebar rendering"));
+        assert!(format!("{:?}", text.lines[1]).contains("  "));
+        assert!(format!("{:?}", text.lines[1]).contains("core@main"));
+        assert!(format!("{:?}", text.lines[1]).contains("chg2"));
 
-        let row_with_session =
-            entry.sidebar_row_cells(false, PaneSwitcherHighlight::Solid, false, true);
-        assert!(format!("{:?}", row_with_session).contains("swarmux-pane-1"));
+        let text_with_session =
+            entry.sidebar_text(60, false, PaneSwitcherHighlight::Solid, false, true);
+        assert!(format!("{:?}", text_with_session.lines[1]).contains("swarmux-pane-1"));
     }
 }

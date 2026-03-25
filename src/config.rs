@@ -65,6 +65,10 @@ pub struct UiConfig {
     pub pane_switcher_show_arrow: bool,
     #[serde(default)]
     pub pane_switcher_sidebar_show_session: bool,
+    #[serde(default)]
+    pub pane_switcher_current_session_only: bool,
+    #[serde(default)]
+    pub pane_switcher_sidebar_current_session_only: bool,
 }
 
 impl Default for UiConfig {
@@ -73,6 +77,8 @@ impl Default for UiConfig {
             pane_switcher_highlight: PaneSwitcherHighlight::default(),
             pane_switcher_show_arrow: true,
             pane_switcher_sidebar_show_session: false,
+            pane_switcher_current_session_only: false,
+            pane_switcher_sidebar_current_session_only: false,
         }
     }
 }
@@ -289,6 +295,8 @@ session_ignore = ["alpha-*", "beta-*"]
         ));
         assert!(config.ui.pane_switcher_show_arrow);
         assert!(!config.ui.pane_switcher_sidebar_show_session);
+        assert!(!config.ui.pane_switcher_current_session_only);
+        assert!(!config.ui.pane_switcher_sidebar_current_session_only);
     }
 
     #[test]
@@ -330,5 +338,21 @@ session_ignore = ["alpha-*", "beta-*"]
         let config = load_file_config(&path).unwrap();
 
         assert!(config.ui.pane_switcher_sidebar_show_session);
+    }
+
+    #[test]
+    fn file_config_can_enable_current_session_filters_for_each_sidebar_mode() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[ui]\npane_switcher_current_session_only = true\npane_switcher_sidebar_current_session_only = true\n",
+        )
+        .unwrap();
+
+        let config = load_file_config(&path).unwrap();
+
+        assert!(config.ui.pane_switcher_current_session_only);
+        assert!(config.ui.pane_switcher_sidebar_current_session_only);
     }
 }

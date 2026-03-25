@@ -89,6 +89,17 @@ pub(crate) fn list_tmux_panes(filter: Option<&str>) -> Result<Vec<RawPane>> {
     Ok(panes)
 }
 
+pub(crate) fn current_tmux_session_name() -> Result<Option<String>> {
+    let output = run_tmux(["display-message", "-p", "#{session_name}"])?;
+    let session_name = output.trim().to_string();
+
+    if session_name.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(session_name))
+    }
+}
+
 pub(crate) fn git_info(path: &str) -> Result<GitInfo> {
     let context = git_context(path)?;
     let status = run_git_optional([

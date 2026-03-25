@@ -2,12 +2,14 @@ use crate::config::PaneSwitcherHighlight;
 use crate::model::TaskRecord;
 use crate::panes::{PaneGitSummary, PaneSnapshot};
 use crate::panes_support::{
-    RawPane, build_label, git_context, git_info, list_tasks, list_tmux_panes, pane_sort_key,
+    RawPane, build_label, current_tmux_session_name, git_context, git_info, list_tasks,
+    list_tmux_panes, pane_sort_key,
 };
-use crate::panes_tui_detail::{row_git_line, row_repo_line};
+use crate::panes_tui_detail::{git_summary_spans, row_git_line, row_repo_line};
 use crate::store::Store;
 use anyhow::Result;
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Cell, Row};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -33,9 +35,12 @@ pub(crate) struct PaneEntry {
 
 #[derive(Debug)]
 pub(crate) struct PaneSwitcherState {
+    pub(crate) all_rows: Vec<PaneEntry>,
     pub(crate) rows: Vec<PaneEntry>,
     pub(crate) selected: usize,
     pub(crate) loaded_count: usize,
+    pub(crate) current_session_only: bool,
+    pub(crate) current_session_name: Option<String>,
 }
 
 #[derive(Debug)]
@@ -51,6 +56,7 @@ impl PaneSwitcherState {
         store: &Store,
         current_pane_id: Option<&str>,
         excluded_pane_id: Option<&str>,
+        current_session_only: bool,
     ) -> Result<Self> {
         let tasks = list_tasks(store)?;
         let tasks_by_session = tasks
@@ -66,19 +72,28 @@ impl PaneSwitcherState {
         let current_pane_id = current_pane_id
             .map(str::to_string)
             .or_else(|| std::env::var("TMUX_PANE").ok());
+        let current_session_name = current_tmux_session_name()?;
         let raw_panes = list_tmux_panes(Some(filter.as_str()))?;
-        let mut rows = raw_panes
+        let mut all_rows = raw_panes
             .into_iter()
             .filter(|raw| excluded_pane_id != Some(raw.pane_id.as_str()))
             .map(|raw| build_entry(&raw, &tasks_by_session, current_pane_id.as_deref()))
             .collect::<Vec<_>>();
 
-        rows.sort_by_key(|entry| pane_sort_key(&entry.snapshot));
+        all_rows.sort_by_key(|entry| pane_sort_key(&entry.snapshot));
+        let rows = filter_rows(
+            &all_rows,
+            current_session_only,
+            current_session_name.as_deref(),
+        );
 
         Ok(Self {
+            all_rows,
             rows,
             selected: 0,
             loaded_count: 0,
+            current_session_only,
+            current_session_name,
         })
     }
 
@@ -101,40 +116,66 @@ impl PaneSwitcherState {
         }
     }
 
+    pub(crate) fn toggle_current_session_only(&mut self) {
+        self.current_session_only = !self.current_session_only;
+        let selected_pane_id = self
+            .rows
+            .get(self.selected)
+            .map(|entry| entry.snapshot.pane_id.clone());
+        self.rebuild_rows(selected_pane_id.as_deref());
+    }
+
     pub(crate) fn apply_update(&mut self, update: HydrationUpdate) -> bool {
         match update {
             HydrationUpdate::PaneGit { pane_id, git } => {
-                let Some(entry) = self
+                let mut updated = false;
+
+                if let Some(entry) = self
+                    .all_rows
+                    .iter_mut()
+                    .find(|entry| entry.snapshot.pane_id == pane_id)
+                {
+                    updated |= apply_git_update(entry, git.clone());
+                }
+
+                if let Some(entry) = self
                     .rows
                     .iter_mut()
                     .find(|entry| entry.snapshot.pane_id == pane_id)
-                else {
-                    return false;
-                };
-
-                if entry.metadata_loaded {
-                    return true;
+                {
+                    updated |= apply_git_update(entry, git);
                 }
 
-                entry.snapshot.git = git;
-                let raw = snapshot_to_raw(&entry.snapshot);
-                entry.snapshot.label = build_label(
-                    &raw,
-                    entry.snapshot.task.as_ref(),
-                    entry.snapshot.repo.as_deref(),
-                    entry.snapshot.branch.as_deref(),
-                    entry.snapshot.git.as_ref(),
-                );
-                entry.metadata_loaded = true;
-                self.loaded_count += 1;
-                true
+                if updated {
+                    self.refresh_loaded_count();
+                }
+
+                updated
             }
         }
+    }
+
+    fn rebuild_rows(&mut self, selected_pane_id: Option<&str>) {
+        self.rows = filter_rows(
+            &self.all_rows,
+            self.current_session_only,
+            self.current_session_name.as_deref(),
+        );
+        self.selected = self.initial_selected(selected_pane_id);
+        self.refresh_loaded_count();
+    }
+
+    fn refresh_loaded_count(&mut self) {
+        self.loaded_count = self
+            .rows
+            .iter()
+            .filter(|entry| entry.metadata_loaded)
+            .count();
     }
 }
 
 impl PaneEntry {
-    fn row_style(&self, selected: bool, mode: PaneSwitcherHighlight) -> Style {
+    pub(crate) fn row_style(&self, selected: bool, mode: PaneSwitcherHighlight) -> Style {
         if selected {
             match mode {
                 PaneSwitcherHighlight::Solid => Style::default()
@@ -189,31 +230,90 @@ impl PaneEntry {
         .style(self.row_style(selected, mode))
     }
 
-    pub(crate) fn sidebar_row_cells(
+    pub(crate) fn sidebar_text(
         &self,
+        width: usize,
         selected: bool,
         mode: PaneSwitcherHighlight,
         show_arrow: bool,
         show_session: bool,
-    ) -> Row<'static> {
-        let mut cells = vec![
-            Cell::from(self.marker(selected, show_arrow)),
-            Cell::from(crate::overview_tui_helpers::truncate(
-                &self.snapshot.pane_title,
-                28,
-            )),
-            Cell::from(row_git_line(&self.snapshot, self.metadata_loaded)),
-            Cell::from(row_repo_line(&self.snapshot)),
+    ) -> Text<'static> {
+        let width = width.max(1);
+        let title = crate::overview_tui_helpers::truncate(
+            &self.snapshot.pane_title,
+            width.saturating_sub(2).max(1),
+        );
+        let repo = self.snapshot.repo.as_deref().unwrap_or("n/a");
+        let branch = self.snapshot.branch.as_deref().unwrap_or("");
+        let git = self
+            .snapshot
+            .git
+            .as_ref()
+            .map(|git| git.label.as_str())
+            .unwrap_or(if self.metadata_loaded {
+                "n/a"
+            } else {
+                "loading"
+            });
+
+        let repo_text = if branch.is_empty() {
+            repo.to_string()
+        } else {
+            format!("{repo}@{branch}")
+        };
+
+        let title_style = if selected {
+            match mode {
+                PaneSwitcherHighlight::Solid => Style::default()
+                    .bg(ACCENT)
+                    .fg(SURFACE)
+                    .add_modifier(Modifier::BOLD),
+                PaneSwitcherHighlight::Underline => {
+                    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
+                }
+            }
+        } else if self.snapshot.current {
+            Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(TEXT)
+        };
+
+        let mut detail_spans = vec![
+            Span::raw("  "),
+            Span::styled(repo_text, Style::default().fg(GOOD)),
+            Span::raw(" | "),
         ];
+        detail_spans.extend(git_summary_spans(git, self.metadata_loaded));
 
         if show_session {
-            cells.push(Cell::from(crate::overview_tui_helpers::truncate(
-                &self.snapshot.session_name,
-                18,
-            )));
+            detail_spans.push(Span::raw(" | "));
+            detail_spans.push(Span::styled(
+                self.snapshot.session_name.clone(),
+                Style::default().fg(TEXT),
+            ));
         }
 
-        Row::new(cells).style(self.row_style(selected, mode))
+        let detail = Line::from(detail_spans);
+        let detail = match mode {
+            PaneSwitcherHighlight::Solid if selected => detail.style(
+                Style::default()
+                    .bg(ACCENT)
+                    .fg(SURFACE)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            PaneSwitcherHighlight::Underline if selected => {
+                detail.style(Style::default().add_modifier(Modifier::UNDERLINED))
+            }
+            _ => detail,
+        };
+
+        Text::from(vec![
+            Line::from(vec![Span::styled(
+                format!("{} {}", self.marker(selected, show_arrow), title),
+                title_style,
+            )]),
+            detail,
+        ])
     }
 }
 
@@ -234,6 +334,39 @@ pub(crate) fn spawn_hydrator(rows: Vec<PaneEntry>, tx: Sender<HydrationUpdate>) 
             }
         }
     });
+}
+
+fn filter_rows(
+    rows: &[PaneEntry],
+    current_session_only: bool,
+    current_session_name: Option<&str>,
+) -> Vec<PaneEntry> {
+    rows.iter()
+        .filter(|entry| {
+            !current_session_only
+                || current_session_name
+                    .is_none_or(|session_name| entry.snapshot.session_name == session_name)
+        })
+        .cloned()
+        .collect()
+}
+
+fn apply_git_update(entry: &mut PaneEntry, git: Option<PaneGitSummary>) -> bool {
+    if entry.metadata_loaded {
+        return true;
+    }
+
+    entry.snapshot.git = git;
+    let raw = snapshot_to_raw(&entry.snapshot);
+    entry.snapshot.label = build_label(
+        &raw,
+        entry.snapshot.task.as_ref(),
+        entry.snapshot.repo.as_deref(),
+        entry.snapshot.branch.as_deref(),
+        entry.snapshot.git.as_ref(),
+    );
+    entry.metadata_loaded = true;
+    true
 }
 
 fn build_entry(
@@ -376,12 +509,18 @@ mod tests {
     #[test]
     fn initial_selection_prefers_explicit_source_then_current_row() {
         let state = PaneSwitcherState {
+            all_rows: vec![
+                entry("%1", "alpha", false, None),
+                entry("%2", "beta", true, Some(task("b", "beta", Some("main")))),
+            ],
             rows: vec![
                 entry("%1", "alpha", false, None),
                 entry("%2", "beta", true, Some(task("b", "beta", Some("main")))),
             ],
             selected: 0,
             loaded_count: 0,
+            current_session_only: false,
+            current_session_name: None,
         };
 
         assert_eq!(state.initial_selected(Some("%2")), 1);
@@ -391,6 +530,12 @@ mod tests {
     #[test]
     fn hydration_updates_label_and_loaded_count() {
         let mut state = PaneSwitcherState {
+            all_rows: vec![entry(
+                "%1",
+                "alpha",
+                true,
+                Some(task("a", "alpha", Some("main"))),
+            )],
             rows: vec![entry(
                 "%1",
                 "alpha",
@@ -399,6 +544,8 @@ mod tests {
             )],
             selected: 0,
             loaded_count: 0,
+            current_session_only: false,
+            current_session_name: None,
         };
         let updated = state.apply_update(HydrationUpdate::PaneGit {
             pane_id: "%1".to_string(),
@@ -422,11 +569,25 @@ mod tests {
     #[test]
     fn selected_target_clamps_empty_state() {
         let state = PaneSwitcherState {
+            all_rows: Vec::new(),
             rows: Vec::new(),
             selected: 3,
             loaded_count: 0,
+            current_session_only: false,
+            current_session_name: None,
         };
 
         assert_eq!(state.clamp_selected(3), 0);
+    }
+
+    #[test]
+    fn filter_rows_keeps_only_current_session_when_enabled() {
+        let current = entry("%1", "current", true, None);
+        let other = entry("%2", "other", false, None);
+
+        let rows = filter_rows(&[current.clone(), other], true, Some("current"));
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].snapshot.session_name, "current");
     }
 }
