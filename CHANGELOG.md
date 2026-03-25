@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/ghillb/swarmux/compare/v0.1.6...v0.1.7) - 2026-03-25
+
+### Added
+
+- *(panes)* add async tui switcher
+- *(overview)* add foreground tui dashboard
+
+### Fixed
+
+- *(panes)* refine panes tui header layout
+- *(overview)* align metric labels
+- *(overview)* show live session counts
+- *(overview)* reconcile stale tasks before render
+
+### Other
+
+- update docs with overview --tui
+
 ## [0.1.6](https://github.com/ghillb/swarmux/compare/v0.1.5...v0.1.6) - 2026-03-22
 
 ### Added
