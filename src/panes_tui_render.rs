@@ -42,7 +42,7 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
     if !io::stdout().is_terminal() {
         return Err(anyhow!(match mode {
             ViewMode::Fullscreen => "panes switch --tui requires an interactive terminal",
-            ViewMode::Sidebar => "panes switch --sidebar requires an interactive terminal",
+            ViewMode::Sidebar => "panes switch --tui-sidebar requires an interactive terminal",
         }));
     }
 

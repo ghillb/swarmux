@@ -259,8 +259,8 @@ pub struct SwitchArgs {
     #[arg(long)]
     pub tui: bool,
 
-    #[arg(long, conflicts_with = "tui")]
-    pub sidebar: bool,
+    #[arg(long = "tui-sidebar", conflicts_with = "tui")]
+    pub tui_sidebar: bool,
 
     #[arg(long)]
     pub pane_id: Option<String>,

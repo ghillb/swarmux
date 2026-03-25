@@ -188,7 +188,7 @@ bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes swi
 For the sidebar variant, use a horizontal split and close that pane after the switcher exits:
 
 ```tmux
-bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
+bind -n C-M-Space split-window -h -l 42 -c "#{pane_current_path}" "sh -lc 'swarmux panes switch --tui-sidebar --pane-id \"#{pane_id}\"; tmux kill-pane -t \"$TMUX_PANE\"'"
 ```
 
 `swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks.

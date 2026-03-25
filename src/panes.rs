@@ -94,9 +94,9 @@ pub fn run(store: &Store, output: OutputFormat, args: PanesArgs) -> Result<()> {
                 return crate::panes_tui::run(store, args.pane_id.as_deref());
             }
 
-            if args.sidebar {
+            if args.tui_sidebar {
                 if matches!(output, OutputFormat::Json) {
-                    return Err(anyhow!("panes switch --sidebar requires text output"));
+                    return Err(anyhow!("panes switch --tui-sidebar requires text output"));
                 }
                 return crate::panes_tui::run_sidebar(store, args.pane_id.as_deref());
             }
