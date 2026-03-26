@@ -17,6 +17,7 @@ use std::thread;
 const TEXT: Color = Color::Rgb(236, 239, 244);
 const GOOD: Color = Color::Rgb(96, 255, 160);
 const ACCENT: Color = Color::Rgb(88, 214, 255);
+const WARN: Color = Color::Rgb(255, 204, 102);
 const SURFACE: Color = Color::Rgb(29, 32, 40);
 
 pub fn run(store: &Store, source_pane_id: Option<&str>) -> Result<()> {
@@ -187,6 +188,8 @@ impl PaneEntry {
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
             }
+        } else if self.snapshot.window_bell_flag {
+            Style::default().fg(WARN).add_modifier(Modifier::BOLD)
         } else if self.snapshot.current {
             Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
         } else {
@@ -197,6 +200,8 @@ impl PaneEntry {
     fn marker(&self, selected: bool, show_arrow: bool) -> &'static str {
         if selected && show_arrow {
             "▶"
+        } else if self.snapshot.window_bell_flag {
+            "!"
         } else if self.snapshot.current {
             "●"
         } else {
@@ -286,6 +291,8 @@ impl PaneEntry {
                     Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)
                 }
             }
+        } else if self.snapshot.window_bell_flag {
+            Style::default().fg(WARN).add_modifier(Modifier::BOLD)
         } else if self.snapshot.current {
             Style::default().fg(GOOD).add_modifier(Modifier::BOLD)
         } else {
@@ -404,6 +411,7 @@ fn build_entry(
         pane_id: raw.pane_id.clone(),
         pane_index: raw.pane_index,
         pane_active: raw.pane_active,
+        window_bell_flag: raw.window_bell_flag,
         pane_current_path: raw.pane_current_path.clone(),
         pane_current_command: raw.pane_current_command.clone(),
         pane_title: raw.pane_title.clone(),
@@ -439,6 +447,7 @@ fn snapshot_to_raw(snapshot: &PaneSnapshot) -> RawPane {
         pane_id: snapshot.pane_id.clone(),
         pane_index: snapshot.pane_index,
         pane_active: snapshot.pane_active,
+        window_bell_flag: snapshot.window_bell_flag,
         pane_current_path: snapshot.pane_current_path.clone(),
         pane_current_command: snapshot.pane_current_command.clone(),
         pane_title: snapshot.pane_title.clone(),
@@ -494,6 +503,7 @@ mod tests {
             pane_id: pane_id.to_string(),
             pane_index: 1,
             pane_active: true,
+            window_bell_flag: false,
             pane_current_path: "/tmp/core".to_string(),
             pane_current_command: "bash".to_string(),
             pane_title: "shell".to_string(),
@@ -594,5 +604,30 @@ mod tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].snapshot.session_name, "current");
+    }
+
+    #[test]
+    fn bell_rows_render_alert_marker_and_style() {
+        let mut entry = entry("%1", "alpha", false, None);
+        entry.snapshot.window_bell_flag = true;
+
+        let style = entry.row_style(false, PaneSwitcherHighlight::Underline);
+        assert_eq!(style.fg, Some(WARN));
+
+        let text = entry
+            .sidebar_text(40, false, PaneSwitcherHighlight::Underline, false, false)
+            .lines
+            .into_iter()
+            .map(|line| {
+                line.spans
+                    .into_iter()
+                    .map(|span| span.content.into_owned())
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(text.starts_with("! "));
     }
 }

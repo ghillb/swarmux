@@ -35,6 +35,8 @@ pub struct PaneSnapshot {
     pub pane_id: String,
     pub pane_index: i64,
     pub pane_active: bool,
+    #[serde(skip_serializing)]
+    pub window_bell_flag: bool,
     pub pane_current_path: String,
     pub pane_current_command: String,
     pub pane_title: String,
@@ -392,6 +394,7 @@ fn build_panes(store: &Store) -> Result<Vec<PaneSnapshot>> {
                 pane_id: raw.pane_id,
                 pane_index: raw.pane_index,
                 pane_active: raw.pane_active,
+                window_bell_flag: raw.window_bell_flag,
                 pane_current_path: raw.pane_current_path,
                 pane_current_command: raw.pane_current_command,
                 pane_title: raw.pane_title,

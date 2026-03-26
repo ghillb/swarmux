@@ -14,7 +14,7 @@ const REPO_WIDTH: usize = 18;
 const BRANCH_WIDTH: usize = 12;
 const GIT_WIDTH: usize = 14;
 
-const PANE_LIST_FORMAT: &str = "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_index}\t#{pane_active}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_title}";
+const PANE_LIST_FORMAT: &str = "#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_index}\t#{pane_active}\t#{window_bell_flag}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_title}";
 
 #[derive(Debug, Clone)]
 pub(crate) struct RawPane {
@@ -25,6 +25,7 @@ pub(crate) struct RawPane {
     pub pane_id: String,
     pub pane_index: i64,
     pub pane_active: bool,
+    pub window_bell_flag: bool,
     pub pane_current_path: String,
     pub pane_current_command: String,
     pub pane_title: String,
@@ -80,6 +81,7 @@ pub(crate) fn list_tmux_panes(filter: Option<&str>) -> Result<Vec<RawPane>> {
             pane_id: field(&mut fields, "pane_id")?.to_string(),
             pane_index: field(&mut fields, "pane_index")?.parse::<i64>()?,
             pane_active: parse_bool(field(&mut fields, "pane_active")?)?,
+            window_bell_flag: parse_bool(field(&mut fields, "window_bell_flag")?)?,
             pane_current_path: field(&mut fields, "pane_current_path")?.to_string(),
             pane_current_command: field(&mut fields, "pane_current_command")?.to_string(),
             pane_title: field(&mut fields, "pane_title")?.to_string(),
@@ -516,6 +518,7 @@ mod tests {
             pane_id: pane_id.to_string(),
             pane_index,
             pane_active: true,
+            window_bell_flag: false,
             pane_current_path: "/tmp".to_string(),
             pane_current_command: "bash".to_string(),
             pane_title: "pane".to_string(),

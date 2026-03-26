@@ -650,7 +650,7 @@ fn panes_lists_and_syncs_tmux_metadata() {
     fs::write(
         harness.fake_root.path().join("panes.tsv"),
         format!(
-            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t/tmp/other\tbash\tShell pane\n",
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t0\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t0\t/tmp/other\tbash\tShell pane\n",
             repo_root.display()
         ),
     )
@@ -745,7 +745,7 @@ fn panes_switch_launches_tmux_popup_with_filtered_tree() {
     fs::write(
         harness.fake_root.path().join("panes.tsv"),
         format!(
-            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t/tmp/other\tbash\tShell pane\n",
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t0\t{}\tcodex\tCodex pane\nother\t@2\t2\tother\t%99\t1\t0\t0\t/tmp/other\tbash\tShell pane\n",
             repo_root.display()
         ),
     )
@@ -789,7 +789,7 @@ fn panes_switch_uses_configured_tmux_session_ignore_patterns() {
     fs::write(
         harness.fake_root.path().join("panes.tsv"),
         format!(
-            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t{}\tcodex\tCodex pane\n",
+            "swarmux-pane-1\t@1\t1\twork\t%42\t1\t1\t0\t{}\tcodex\tCodex pane\n",
             repo_root.display()
         ),
     )
