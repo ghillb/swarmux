@@ -358,22 +358,18 @@ impl PaneEntry {
 }
 
 pub(crate) fn spawn_hydrator(rows: Vec<PaneEntry>, tx: Sender<HydrationUpdate>) {
-    thread::spawn(move || {
-        for entry in rows {
+    for entry in rows {
+        let tx = tx.clone();
+        thread::spawn(move || {
             let git = git_info(&entry.snapshot.pane_current_path)
                 .ok()
                 .map(|info| info.summary);
-            if tx
-                .send(HydrationUpdate::PaneGit {
-                    pane_id: entry.snapshot.pane_id,
-                    git,
-                })
-                .is_err()
-            {
-                break;
-            }
-        }
-    });
+            let _ = tx.send(HydrationUpdate::PaneGit {
+                pane_id: entry.snapshot.pane_id,
+                git,
+            });
+        });
+    }
 }
 
 fn filter_rows(
