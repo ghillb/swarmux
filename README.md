@@ -13,21 +13,37 @@ Agent-first tmux swarm orchestration for local coding tasks.
 
 ## Install
 
-For now, install from source:
+Primary release artifacts are GitHub release tarballs.
+Current supported platforms:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-apple-darwin`
+
+Install the latest tagged release into `~/.local/bin`, or any other directory on `PATH`:
+
+```bash
+TARGET=x86_64-unknown-linux-gnu # or aarch64-apple-darwin
+curl -L "https://github.com/ghillb/swarmux/releases/latest/download/swarmux-${TARGET}.tar.xz" \
+  | tar -xJf - -C /tmp
+install -m 0755 "/tmp/swarmux" ~/.local/bin/swarmux
+```
+
+Install from source only if you are developing locally:
 
 ```bash
 cargo install --path .
 ```
 
-If you use the optional beads-rust backend and only have `br` installed, add a `bd` shim.
+If you use the optional beads backend, ensure `bd` is installed and on `PATH`.
 
 To expose the official `swarmux` skill to agents that load global skills from
-`~/.agents/skills`, place the skill file there:
+`~/.agents/skills`, download it from GitHub and place it there:
 
 ```bash
 mkdir -p ~/.agents/skills/swarmux
-# download or copy .agents/skills/swarmux/SKILL.md into:
-~/.agents/skills/swarmux/SKILL.md
+curl -L \
+  "https://github.com/ghillb/swarmux/raw/main/.agents/skills/swarmux/SKILL.md" \
+  -o ~/.agents/skills/swarmux/SKILL.md
 ```
 
 If your agent runtime uses a different global skills path, place the same
@@ -38,8 +54,8 @@ directory there instead.
 ```bash
 swarmux doctor
 swarmux init
-swarmux --output json schema
-swarmux --output json submit --json '{
+swarmux schema
+swarmux submit --json '{
   "title": "hello",
   "repo_ref": "demo",
   "repo_root": "/path/to/repo",
@@ -48,19 +64,21 @@ swarmux --output json submit --json '{
   "session": "swarmux-demo",
   "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
-swarmux --output json list
-swarmux --output json panes
+swarmux list
+swarmux panes
 swarmux overview --once
 swarmux overview --once --scope all
 swarmux overview --tui
 ```
+
+Structured commands emit JSON by default. Use `--output text` when you want the pretty-printed human view. TUI commands ignore `--output`.
 
 `overview --tui` opens a tabbed dashboard with `Overview`, `Operational`, and `Client All`.
 
 tmux-friendly dispatch without JSON quoting:
 
 ```bash
-swarmux --output json dispatch \
+swarmux dispatch \
   --title "hello" \
   --repo-ref demo \
   --repo-root /path/to/repo \
@@ -70,7 +88,7 @@ swarmux --output json dispatch \
 Connected dispatch from the current tmux pane:
 
 ```bash
-swarmux --output json dispatch \
+swarmux dispatch \
   --connected \
   --mirrored \
   --prompt "fix tests" \
@@ -87,13 +105,13 @@ command = ["codex", "exec"]
 ```
 
 ```bash
-swarmux --output json dispatch --connected --prompt "fix tests"
+swarmux dispatch --connected --prompt "fix tests"
 ```
 
 Actual TUI runtime in a task session:
 
 ```bash
-swarmux --output json submit --json '{
+swarmux submit --json '{
   "title": "tui task",
   "repo_ref": "demo",
   "repo_root": "/path/to/repo",
@@ -103,7 +121,7 @@ swarmux --output json submit --json '{
   "session": "swarmux-demo-tui",
   "command": ["my-tui-agent", "fix tests"]
 }'
-swarmux --output json start <id>
+swarmux start <id>
 swarmux attach <id>
 ```
 
@@ -123,13 +141,13 @@ command = ["claude", "-p"]
 ```
 
 ```bash
-swarmux --output json dispatch --connected --agent claude --prompt "summarize diff"
+swarmux dispatch --connected --agent claude --prompt "summarize diff"
 ```
 
 tmux binding for connected dispatch:
 
 ```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --pane-id \"#{pane_id}\" --prompt \"%1\"'"
+bind-key D command-prompt -p "Task" "run-shell 'swarmux dispatch --connected --pane-id \"#{pane_id}\" --prompt \"%1\"'"
 ```
 
 `headless` remains the default runtime when no override is configured.
@@ -207,14 +225,14 @@ For task-scoped waiting, use `swarmux wait <id...>` to block until one watched t
 Task-scoped waiting:
 
 ```bash
-swarmux --output json wait <id> --states succeeded,failed --timeout-ms 600000
-swarmux --output json watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
+swarmux wait <id> --states succeeded,failed --timeout-ms 600000
+swarmux watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
 ```
 
 PR or external linkage can be updated after creation:
 
 ```bash
-swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
+swarmux set-ref <id> "https://github.com/owner/repo/pull/123"
 ```
 
 `watch`/`notify` include compact task output excerpts:

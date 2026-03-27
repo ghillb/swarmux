@@ -959,6 +959,8 @@ fn watch_text_mode_returns_the_matched_task() {
 
     harness
         .run(&[
+            "--output",
+            "text",
             "watch",
             &task_id,
             "--interval-ms",

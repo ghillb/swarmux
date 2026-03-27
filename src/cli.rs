@@ -12,7 +12,7 @@ pub enum OutputFormat {
 #[command(name = "swarmux")]
 #[command(about = "tmux-backed local swarm orchestration built for agents first")]
 pub struct Cli {
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Text)]
+    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Json)]
     pub output: OutputFormat,
 
     #[command(subcommand)]

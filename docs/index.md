@@ -28,9 +28,9 @@ hide_title: true
     </div>
     <pre><code>$ swarmux doctor
 $ swarmux init
-$ swarmux --output json submit --json '{...}'
-$ swarmux --output json panes
-$ swarmux --output json start &lt;id&gt;
+$ swarmux submit --json '{...}'
+$ swarmux panes
+$ swarmux start &lt;id&gt;
 $ swarmux overview --once</code></pre>
   </div>
 </div>
@@ -38,7 +38,7 @@ $ swarmux overview --once</code></pre>
 ## Why swarmux
 
 - Run task commands in tmux sessions that operators can inspect live.
-- Keep agent automation scriptable via machine-readable output.
+- Keep agent automation scriptable via JSON output by default.
 - Reconcile task state after process exit or session loss.
 - Prune managed worktrees and sessions after terminal states.
 

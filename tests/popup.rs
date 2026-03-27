@@ -53,14 +53,14 @@ fn overview_title_and_once_render_summary() {
     run(&home, &["overview", "--once"])
         .success()
         .stdout(predicate::str::contains("Swarmux popup").not())
-        .stdout(predicate::str::contains("total=1"))
-        .stdout(predicate::str::contains("succeeded=1"))
+        .stdout(predicate::str::contains("\"total\":1"))
+        .stdout(predicate::str::contains("\"succeeded\":1"))
         .stdout(predicate::str::contains(&task_id).not());
 
     run(&home, &["overview", "--once", "--scope", "terminal"])
         .success()
         .stdout(predicate::str::contains(&task_id))
-        .stdout(predicate::str::contains("succeeded"));
+        .stdout(predicate::str::contains("\"state\":\"succeeded\""));
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn overview_defaults_to_non_terminal_rows() {
 
     run(&home, &["overview", "--once"])
         .success()
-        .stdout(predicate::str::contains("running=1"))
+        .stdout(predicate::str::contains("\"running\":1"))
         .stdout(predicate::str::contains(&task_id))
-        .stdout(predicate::str::contains("Running task"));
+        .stdout(predicate::str::contains("\"title\":\"Running task\""));
 }

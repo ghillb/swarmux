@@ -442,10 +442,6 @@ fn run_doctor(store: &Store, output: OutputFormat) -> Result<()> {
 
 fn run_overview(store: &Store, output: OutputFormat, args: cli::OverviewArgs) -> Result<()> {
     if args.tui {
-        if matches!(output, OutputFormat::Json) {
-            return Err(anyhow!("overview --tui requires text output"));
-        }
-
         return overview_tui::run(store, args.scope);
     }
 

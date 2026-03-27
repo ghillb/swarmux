@@ -91,25 +91,14 @@ pub fn run(store: &Store, output: OutputFormat, args: PanesArgs) -> Result<()> {
         }
         Some(PanesCommand::Switch(args)) => {
             if args.launch_sidebar {
-                if matches!(output, OutputFormat::Json) {
-                    return Err(anyhow!(
-                        "panes switch --launch-sidebar requires text output"
-                    ));
-                }
                 return launch_sidebar(args.pane_id.as_deref());
             }
 
             if args.tui {
-                if matches!(output, OutputFormat::Json) {
-                    return Err(anyhow!("panes switch --tui requires text output"));
-                }
                 return crate::panes_tui::run(store, args.pane_id.as_deref());
             }
 
             if args.tui_sidebar {
-                if matches!(output, OutputFormat::Json) {
-                    return Err(anyhow!("panes switch --tui-sidebar requires text output"));
-                }
                 return crate::panes_tui::run_sidebar(store, args.pane_id.as_deref());
             }
 
@@ -258,13 +247,7 @@ fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
         "SWARMUX_TUI_SIDEBAR_AUTOCLOSE=1",
     ]);
     command.arg(&binary);
-    command.args([
-        "panes",
-        "switch",
-        "--tui-sidebar",
-        "--pane-id",
-        context.pane_id.as_str(),
-    ]);
+    command.args(sidebar_child_args(context.pane_id.as_str()));
 
     let output = command.output().context("failed to run tmux")?;
 
@@ -298,6 +281,17 @@ fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
 
     Ok(())
 }
+
+fn sidebar_child_args(source_pane_id: &str) -> Vec<String> {
+    vec![
+        "panes".to_string(),
+        "switch".to_string(),
+        "--tui-sidebar".to_string(),
+        "--pane-id".to_string(),
+        source_pane_id.to_string(),
+    ]
+}
+
 fn launch_swarmux_tree_popup(filter: &str) -> Result<()> {
     let popup_w = env::var("SWARM_POPUP_W").unwrap_or_else(|_| "96%".to_string());
     let popup_h = env::var("SWARM_POPUP_H").unwrap_or_else(|_| "85%".to_string());
@@ -410,4 +404,17 @@ fn build_panes(store: &Store) -> Result<Vec<PaneSnapshot>> {
 
     panes.sort_by_key(pane_sort_key);
     Ok(panes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sidebar_child_args;
+
+    #[test]
+    fn sidebar_launcher_uses_plain_tui_invocation() {
+        assert_eq!(
+            sidebar_child_args("%79"),
+            vec!["panes", "switch", "--tui-sidebar", "--pane-id", "%79",]
+        );
+    }
 }

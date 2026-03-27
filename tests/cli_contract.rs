@@ -4,7 +4,7 @@ use predicates::prelude::*;
 #[test]
 fn schema_is_available_as_machine_readable_json() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
-    command.args(["--output", "json", "schema"]);
+    command.args(["schema"]);
     command
         .assert()
         .success()
@@ -25,6 +25,16 @@ fn schema_is_available_as_machine_readable_json() {
 }
 
 #[test]
+fn default_help_reports_json_output() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["--help"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[default: json]"));
+}
+
+#[test]
 fn overview_help_exposes_tui_mode() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
     command.args(["overview", "--help"]);
@@ -32,6 +42,19 @@ fn overview_help_exposes_tui_mode() {
         .assert()
         .success()
         .stdout(predicate::str::contains("--tui"));
+}
+
+#[test]
+fn overview_tui_ignores_output_mode() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["--output", "json", "overview", "--tui"]);
+    command
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "overview --tui requires an interactive terminal",
+        ))
+        .stderr(predicate::str::contains("requires text output").not());
 }
 
 #[test]
@@ -48,6 +71,19 @@ fn panes_switch_help_exposes_tui_mode() {
 }
 
 #[test]
+fn panes_switch_tui_ignores_output_mode() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["--output", "json", "panes", "switch", "--tui"]);
+    command
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "panes switch --tui requires an interactive terminal",
+        ))
+        .stderr(predicate::str::contains("requires text output").not());
+}
+
+#[test]
 fn submit_supports_raw_json_payloads_in_dry_run_mode() {
     let payload = r#"{
       "title":"Implement acceptance criteria",
@@ -61,7 +97,7 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
     }"#;
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
-    command.args(["--output", "json", "submit", "--dry-run", "--json", payload]);
+    command.args(["submit", "--dry-run", "--json", payload]);
     command
         .assert()
         .success()
@@ -71,6 +107,17 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
         ))
         .stdout(predicate::str::contains("\"runtime\":\"tui\""))
         .stdout(predicate::str::contains("\"session\":\"swarmux-task-1\""));
+}
+
+#[test]
+fn schema_supports_explicit_text_output() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["--output", "text", "schema"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("{\n"))
+        .stdout(predicate::str::contains("  \"commands\""));
 }
 
 #[test]

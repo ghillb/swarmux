@@ -147,9 +147,18 @@ impl Store {
 
     fn write_task(&self, task: &TaskRecord) -> Result<()> {
         let path = self.task_path(&task.id);
+        let temp_path = self.config.tasks_dir().join(format!(
+            "{}.tmp-{}-{}",
+            task.id,
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
         let raw = serde_json::to_vec_pretty(task)?;
-        fs::write(&path, raw)
-            .with_context(|| format!("failed to write task file: {}", path.display()))
+        // Replace task files atomically so concurrent readers never observe truncated JSON.
+        fs::write(&temp_path, raw)
+            .with_context(|| format!("failed to write task temp file: {}", temp_path.display()))?;
+        fs::rename(&temp_path, &path)
+            .with_context(|| format!("failed to replace task file: {}", path.display()))
     }
 
     fn write_task_new(&self, task: &TaskRecord) -> Result<()> {

@@ -13,6 +13,21 @@ description: "Install and run swarmux with tmux overview supervision."
 
 ## Install
 
+Primary release artifacts are GitHub release tarballs.
+Current supported platforms:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-apple-darwin`
+
+```bash
+TARGET=x86_64-unknown-linux-gnu # or aarch64-apple-darwin
+curl -L "https://github.com/ghillb/swarmux/releases/latest/download/swarmux-${TARGET}.tar.xz" \
+  | tar -xJf - -C /tmp
+install -m 0755 "/tmp/swarmux" ~/.local/bin/swarmux
+```
+
+Install from source only for local development:
+
 ```bash
 cargo install --path .
 ```
@@ -24,8 +39,9 @@ official `swarmux` skill there:
 
 ```bash
 mkdir -p ~/.agents/skills/swarmux
-# download or copy .agents/skills/swarmux/SKILL.md into:
-~/.agents/skills/swarmux/SKILL.md
+curl -L \
+  "https://github.com/ghillb/swarmux/raw/main/.agents/skills/swarmux/SKILL.md" \
+  -o ~/.agents/skills/swarmux/SKILL.md
 ```
 
 If your runtime uses a different global skills directory, place the same
@@ -36,13 +52,15 @@ directory there instead.
 ```bash
 swarmux doctor
 swarmux init
-swarmux --output json schema
+swarmux schema
 ```
+
+Structured commands emit JSON by default. Add `--output text` for the pretty-printed human view. TUI commands ignore `--output`.
 
 ## Submit and start a task
 
 ```bash
-swarmux --output json submit --json '{
+swarmux submit --json '{
   "title": "hello",
   "repo_ref": "demo",
   "repo_root": "/path/to/repo",
@@ -51,14 +69,14 @@ swarmux --output json submit --json '{
   "session": "swarmux-demo",
   "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
-swarmux --output json list
-swarmux --output json start <id>
+swarmux list
+swarmux start <id>
 ```
 
 ## Dispatch a task from tmux-friendly flags
 
 ```bash
-swarmux --output json dispatch \
+swarmux dispatch \
   --title "hello" \
   --repo-ref demo \
   --repo-root /path/to/repo \
@@ -68,7 +86,7 @@ swarmux --output json dispatch \
 ## Connected dispatch from the current tmux pane
 
 ```bash
-swarmux --output json dispatch \
+swarmux dispatch \
   --connected \
   --mirrored \
   --prompt "fix tests" \
@@ -90,13 +108,13 @@ command = ["codex", "exec"]
 Then connected dispatch can omit the command prefix:
 
 ```bash
-swarmux --output json dispatch --connected --prompt "fix tests"
+swarmux dispatch --connected --prompt "fix tests"
 ```
 
 Manual TUI task:
 
 ```bash
-swarmux --output json submit --json '{
+swarmux submit --json '{
   "title": "tui task",
   "repo_ref": "demo",
   "repo_root": "/path/to/repo",
@@ -106,7 +124,7 @@ swarmux --output json submit --json '{
   "session": "swarmux-demo-tui",
   "command": ["my-tui-agent", "fix tests"]
 }'
-swarmux --output json start <id>
+swarmux start <id>
 swarmux attach <id>
 ```
 
@@ -128,7 +146,7 @@ command = ["claude", "-p"]
 Then dispatch can target a specific configured agent:
 
 ```bash
-swarmux --output json dispatch --connected --agent claude --prompt "summarize diff"
+swarmux dispatch --connected --agent claude --prompt "summarize diff"
 ```
 
 Runtime choices:
@@ -163,7 +181,7 @@ tmux source-file ~/.config/tmux/tmux.conf
 
 `overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
 Use `swarmux overview --tui` for the interactive dashboard and `swarmux overview --once` for a snapshot.
-Use `swarmux --output json panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
+Use `swarmux panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
 The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions. The custom switchers also have per-mode current-session filters:
 
 - `[ui].pane_switcher_current_session_only` for `--tui`
@@ -174,8 +192,8 @@ Press `s` inside either custom switcher to toggle that filter at runtime.
 Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
 
 ```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux --output json dispatch --connected --pane-id \"#{pane_id}\" --agent codex --prompt \"%1\"'"
-bind-key N run-shell -b 'swarmux --output json notify --tmux >/dev/null 2>&1'
+bind-key D command-prompt -p "Task" "run-shell 'swarmux dispatch --connected --pane-id \"#{pane_id}\" --agent codex --prompt \"%1\"'"
+bind-key N run-shell -b 'swarmux notify --tmux >/dev/null 2>&1'
 ```
 
 Pane-first tree popup:
@@ -201,9 +219,9 @@ bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{
 Task-scoped wait and watch:
 
 ```bash
-swarmux --output json wait <id> --states succeeded,failed --timeout-ms 600000
-swarmux --output json watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
-swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
+swarmux wait <id> --states succeeded,failed --timeout-ms 600000
+swarmux watch <id> --states waiting_input,succeeded,failed,canceled --lines 40
+swarmux set-ref <id> "https://github.com/owner/repo/pull/123"
 ```
 
 `watch`/`notify` show a compact excerpt inline:
@@ -222,12 +240,12 @@ Task logs are timestamped in UTC:
 ## Operator commands
 
 ```bash
-swarmux --output json show <id>
-swarmux --output json logs <id> --raw
-swarmux --output json wait <id> --states succeeded,failed
-swarmux --output json watch <id> --lines 40
-swarmux --output json set-ref <id> "https://github.com/owner/repo/pull/123"
-swarmux --output json reconcile
-swarmux --output json notify --tmux
-swarmux --output json prune --apply
+swarmux show <id>
+swarmux logs <id> --raw
+swarmux wait <id> --states succeeded,failed
+swarmux watch <id> --lines 40
+swarmux set-ref <id> "https://github.com/owner/repo/pull/123"
+swarmux reconcile
+swarmux notify --tmux
+swarmux prune --apply
 ```

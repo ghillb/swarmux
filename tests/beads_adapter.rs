@@ -69,7 +69,8 @@ fn beads_backend_supports_doctor_init_submit_show_and_done() {
     harness
         .run(&["doctor"])
         .success()
-        .stdout(predicate::str::contains("[ok] backend=beads"));
+        .stdout(predicate::str::contains("\"name\":\"backend=beads\""))
+        .stdout(predicate::str::contains("\"ok\":true"));
 
     harness.run(&["init"]).success();
 
@@ -216,7 +217,8 @@ fn config_file_can_select_beads_backend() {
     harness
         .run_with_config_backend(&["doctor"])
         .success()
-        .stdout(predicate::str::contains("[ok] backend=beads"));
+        .stdout(predicate::str::contains("\"name\":\"backend=beads\""))
+        .stdout(predicate::str::contains("\"ok\":true"));
 }
 
 fn write_fake_bd(path: PathBuf, root: &Path) {
