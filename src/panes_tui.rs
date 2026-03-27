@@ -11,6 +11,7 @@ use anyhow::Result;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Cell, Row};
+use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 use std::thread;
 
@@ -156,6 +157,18 @@ impl PaneSwitcherState {
         }
     }
 
+    pub(crate) fn refresh_window_bell_flags(&mut self, raw_panes: &[RawPane]) -> bool {
+        let window_bells = raw_panes
+            .iter()
+            .map(|raw| (raw.pane_id.as_str(), raw.window_bell_flag))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut updated = false;
+        updated |= sync_window_bell_flags(&mut self.all_rows, &window_bells);
+        updated |= sync_window_bell_flags(&mut self.rows, &window_bells);
+        updated
+    }
+
     fn rebuild_rows(&mut self, selected_pane_id: Option<&str>) {
         self.rows = filter_rows(
             &self.all_rows,
@@ -173,6 +186,21 @@ impl PaneSwitcherState {
             .filter(|entry| entry.metadata_loaded)
             .count();
     }
+}
+
+fn sync_window_bell_flags(entries: &mut [PaneEntry], window_bells: &BTreeMap<&str, bool>) -> bool {
+    let mut updated = false;
+
+    for entry in entries {
+        if let Some(flag) = window_bells.get(entry.snapshot.pane_id.as_str()) {
+            if entry.snapshot.window_bell_flag != *flag {
+                entry.snapshot.window_bell_flag = *flag;
+                updated = true;
+            }
+        }
+    }
+
+    updated
 }
 
 impl PaneEntry {
@@ -299,7 +327,7 @@ impl PaneEntry {
             Style::default().fg(TEXT)
         };
 
-        let mut detail_spans = vec![Span::raw("  "), Span::styled(left_text, Style::default())];
+        let mut detail_spans = vec![Span::raw("  "), Span::styled(left_text, title_style)];
         if spacer_width > 0 {
             detail_spans.push(Span::raw(" ".repeat(spacer_width)));
         }
@@ -629,5 +657,56 @@ mod tests {
             .join("\n");
 
         assert!(text.starts_with("! "));
+    }
+
+    #[test]
+    fn refresh_window_bell_flags_updates_matching_rows() {
+        let mut state = PaneSwitcherState {
+            all_rows: vec![
+                entry("%1", "alpha", false, None),
+                entry("%2", "beta", false, None),
+            ],
+            rows: vec![
+                entry("%1", "alpha", false, None),
+                entry("%2", "beta", false, None),
+            ],
+            selected: 0,
+            loaded_count: 0,
+            current_session_only: false,
+            current_session_name: None,
+        };
+        let raw_panes = vec![
+            RawPane {
+                session_name: "alpha".to_string(),
+                window_id: "@1".to_string(),
+                window_index: 0,
+                window_name: "window".to_string(),
+                pane_id: "%1".to_string(),
+                pane_index: 0,
+                pane_active: true,
+                window_bell_flag: true,
+                pane_current_path: "/tmp".to_string(),
+                pane_current_command: "bash".to_string(),
+                pane_title: "pane".to_string(),
+            },
+            RawPane {
+                session_name: "beta".to_string(),
+                window_id: "@2".to_string(),
+                window_index: 0,
+                window_name: "window".to_string(),
+                pane_id: "%2".to_string(),
+                pane_index: 0,
+                pane_active: true,
+                window_bell_flag: false,
+                pane_current_path: "/tmp".to_string(),
+                pane_current_command: "bash".to_string(),
+                pane_title: "pane".to_string(),
+            },
+        ];
+
+        assert!(state.refresh_window_bell_flags(&raw_panes));
+        assert!(state.all_rows[0].snapshot.window_bell_flag);
+        assert!(!state.all_rows[1].snapshot.window_bell_flag);
+        assert!(state.rows[0].snapshot.window_bell_flag);
     }
 }

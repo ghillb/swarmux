@@ -1,5 +1,6 @@
 use crate::config::PaneSwitcherHighlight;
 use crate::panes::PaneSnapshot;
+use crate::panes_support::list_tmux_panes;
 use crate::panes_tui::PaneSwitcherState;
 use crate::panes_tui::spawn_hydrator;
 use crate::panes_tui_detail::{footer_line, header_summary_line};
@@ -20,9 +21,10 @@ use ratatui::widgets::{
 };
 use std::io::{self, IsTerminal};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
+const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 const SIDEBAR_AUTOCLOSE_ENV: &str = "SWARMUX_TUI_SIDEBAR_AUTOCLOSE";
 
 const MUTED: Color = Color::Rgb(134, 144, 160);
@@ -78,6 +80,7 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
         let highlight = store.paths().settings.ui.pane_switcher_highlight;
         let show_arrow = store.paths().settings.ui.pane_switcher_show_arrow;
         let show_session = store.paths().settings.ui.pane_switcher_sidebar_show_session;
+        let tmux_filter = store.paths().settings.tmux.ignore_filter();
         let draw_options = DrawOptions {
             mode,
             highlight,
@@ -88,6 +91,7 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
         spawn_hydrator(state.all_rows.clone(), tx);
         let mut selected = state.initial_selected(source_pane_id);
         state.selected = selected;
+        let mut last_refresh = Instant::now();
 
         session.terminal.draw(|frame| {
             draw(
@@ -108,6 +112,14 @@ fn run_with_mode(store: &Store, source_pane_id: Option<&str>, mode: ViewMode) ->
                     state.selected = selected;
                     redraw = true;
                 }
+            }
+
+            if last_refresh.elapsed() >= REFRESH_INTERVAL {
+                let raw_panes = list_tmux_panes(Some(tmux_filter.as_str()))?;
+                if state.refresh_window_bell_flags(&raw_panes) {
+                    redraw = true;
+                }
+                last_refresh = Instant::now();
             }
 
             if event::poll(POLL_INTERVAL)? {
@@ -649,6 +661,10 @@ mod tests {
         assert_eq!(text.lines.len(), 2);
         assert!(format!("{:?}", text.lines[0]).contains("▶ Implement sidebar rendering"));
         assert_eq!(text.lines[1].spans[1].content.as_ref(), "core@main");
+        assert_eq!(
+            text.lines[1].spans[1].style.fg,
+            text.lines[0].spans[0].style.fg
+        );
         assert_eq!(text.lines[1].spans[2].content.chars().count(), 45);
         assert_eq!(text.lines[1].spans[3].content.as_ref(), "chg2");
 
