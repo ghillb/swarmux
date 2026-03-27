@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/ghillb/swarmux/compare/v0.1.7...v0.1.8) - 2026-03-27
+
+### Added
+
+- *(panes_tui)* refresh window bell flags
+- *(panes)* surface tmux bell state in switcher
+
+### Other
+
+- *(panes)* spawn per-row hydrator threads
+
 ## [0.1.7](https://github.com/ghillb/swarmux/compare/v0.1.6...v0.1.7) - 2026-03-25
 
 ### Added
