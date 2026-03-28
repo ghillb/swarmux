@@ -1,6 +1,6 @@
 use crate::config::PaneSwitcherHighlight;
 use crate::panes::PaneSnapshot;
-use crate::panes_support::list_tmux_panes;
+use crate::panes_support::{list_tmux_panes, tmux_command};
 use crate::panes_tui::PaneSwitcherState;
 use crate::panes_tui::spawn_hydrator;
 use crate::panes_tui_detail::{footer_line, header_summary_line};
@@ -246,7 +246,7 @@ fn close_current_tmux_pane() -> Result<()> {
 }
 
 fn run_tmux<const N: usize>(args: [&str; N]) -> Result<()> {
-    let output = std::process::Command::new("tmux")
+    let output = tmux_command()
         .args(args)
         .output()
         .context("failed to run tmux")?;

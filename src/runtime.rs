@@ -1,5 +1,6 @@
 use crate::config::TaskRuntime;
 use crate::model::{TaskRecord, TaskState};
+use crate::panes_support::tmux_command;
 use anyhow::{Context, Result, anyhow};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
@@ -337,7 +338,7 @@ fn spawn_piped_tmux_session(
 }
 
 pub(crate) fn has_tmux_session(session: &str) -> Result<bool> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(["has-session", "-t", session])
         .output()
         .context("failed to run tmux has-session")?;
@@ -359,11 +360,29 @@ fn tmux_format(target: &str, format: &str) -> Result<String> {
 }
 
 fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String> {
-    run_command("tmux", &args)
+    let output = tmux_command()
+        .args(args)
+        .output()
+        .context("failed to run tmux")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(anyhow!("tmux failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn run_tmux_dynamic(args: &[&str]) -> Result<String> {
-    run_command("tmux", args)
+    let output = tmux_command()
+        .args(args)
+        .output()
+        .context("failed to run tmux")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(anyhow!("tmux failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn run_git<const N: usize>(args: [&str; N]) -> Result<String> {

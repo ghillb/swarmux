@@ -54,7 +54,7 @@ pub(crate) fn list_tasks(store: &Store) -> Result<Vec<TaskRecord>> {
 }
 
 pub(crate) fn list_tmux_panes(filter: Option<&str>) -> Result<Vec<RawPane>> {
-    let mut command = Command::new("tmux");
+    let mut command = tmux_command();
     command.args(["list-panes", "-a", "-F", PANE_LIST_FORMAT]);
     if let Some(filter) = filter {
         command.args(["-f", filter]);
@@ -484,7 +484,7 @@ fn run_git_optional<const N: usize>(args: [&str; N]) -> Result<Option<String>> {
 }
 
 fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String> {
-    let output = Command::new("tmux")
+    let output = tmux_command()
         .args(args)
         .output()
         .context("failed to run tmux")?;
@@ -494,6 +494,14 @@ fn run_tmux<const N: usize>(args: [&str; N]) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub(crate) fn tmux_command() -> Command {
+    let mut command = Command::new("tmux");
+    if let Some(socket) = std::env::var_os("SWARMUX_TMUX_SOCKET") {
+        command.arg("-L").arg(socket);
+    }
+    command
 }
 
 #[cfg(test)]

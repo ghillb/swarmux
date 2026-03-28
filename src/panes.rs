@@ -3,7 +3,7 @@ use crate::emit;
 use crate::model::TaskRecord;
 use crate::panes_support::{
     bool_flag, build_label, git_info, list_tasks, list_tmux_panes, pane_counts, pane_row,
-    pane_sort_key, runtime_label, set_pane_option, task_state_label,
+    pane_sort_key, runtime_label, set_pane_option, task_state_label, tmux_command,
 };
 use crate::runtime;
 use crate::store::Store;
@@ -11,7 +11,6 @@ use anyhow::{Context, Result, anyhow};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::env;
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PaneGitSummary {
@@ -232,7 +231,7 @@ fn switch(store: &Store, output: OutputFormat) -> Result<()> {
 fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
     let context = runtime::current_pane_context(source_pane_id)?;
     let binary = std::env::current_exe().context("failed to resolve swarmux binary")?;
-    let mut command = Command::new("tmux");
+    let mut command = tmux_command();
     command.args([
         "split-window",
         "-P",
@@ -264,7 +263,7 @@ fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
         return Err(anyhow!("tmux did not return a sidebar pane id"));
     }
 
-    let status = Command::new("tmux")
+    let status = tmux_command()
         .args([
             "select-pane",
             "-t",
@@ -302,7 +301,7 @@ fn launch_swarmux_tree_popup(filter: &str) -> Result<()> {
         shell_quote(SWARMUX_TREE_TEMPLATE),
     );
 
-    let status = Command::new("tmux")
+    let status = tmux_command()
         .args([
             "display-popup",
             "-T",
