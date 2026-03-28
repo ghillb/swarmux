@@ -343,30 +343,7 @@ fn run_attach(store: &Store, args: IdArgs) -> Result<()> {
 }
 
 fn run_stop(store: &Store, output: OutputFormat, args: StopArgs) -> Result<()> {
-    require_task_id(&args.id)?;
-    let task = get_task(store, &args.id)?;
-    if args.kill {
-        runtime::kill_task(&task)?;
-        let updated = set_state_backend(
-            store,
-            &task.id,
-            TaskState::Canceled,
-            args.reason
-                .unwrap_or_else(|| "manual_stop_kill".to_string()),
-            None,
-        )?;
-        return emit(&output, &updated);
-    }
-
-    runtime::interrupt_task(&task)?;
-    let updated = set_state_backend(
-        store,
-        &task.id,
-        TaskState::WaitingInput,
-        args.reason
-            .unwrap_or_else(|| "manual_stop_interrupt".to_string()),
-        None,
-    )?;
+    let updated = stop_task(store, &args.id, args.kill, args.reason)?;
     emit(&output, &updated)
 }
 
@@ -416,6 +393,35 @@ fn run_fail(store: &Store, output: OutputFormat, args: FailArgs) -> Result<()> {
         Some(args.error),
     )?;
     emit(&output, &task)
+}
+
+pub(crate) fn stop_task(
+    store: &Store,
+    id: &str,
+    kill: bool,
+    reason: Option<String>,
+) -> Result<TaskRecord> {
+    require_task_id(id)?;
+    let task = get_task(store, id)?;
+    if kill {
+        runtime::kill_task(&task)?;
+        return set_state_backend(
+            store,
+            &task.id,
+            TaskState::Canceled,
+            reason.unwrap_or_else(|| "manual_stop_kill".to_string()),
+            None,
+        );
+    }
+
+    runtime::interrupt_task(&task)?;
+    set_state_backend(
+        store,
+        &task.id,
+        TaskState::WaitingInput,
+        reason.unwrap_or_else(|| "manual_stop_interrupt".to_string()),
+        None,
+    )
 }
 
 fn run_doctor(store: &Store, output: OutputFormat) -> Result<()> {

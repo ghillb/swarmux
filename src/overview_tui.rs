@@ -87,6 +87,7 @@ enum KeyAction {
     Quit,
     Refresh,
     FocusSession(String),
+    Stop { id: String, kill: bool },
 }
 
 pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
@@ -127,6 +128,12 @@ pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
                     KeyAction::FocusSession(session) => {
                         runtime::focus_task_session(&session)?;
                         break;
+                    }
+                    KeyAction::Stop { id, kill } => {
+                        crate::stop_task(store, &id, kill, None)?;
+                        data = data::DashboardData::load(store)?;
+                        app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
+                        last_refresh = Instant::now();
                     }
                     KeyAction::None => {}
                 },
@@ -213,6 +220,32 @@ fn handle_key(app: &mut AppState, key: KeyEvent, data: &data::DashboardData) -> 
 
             match origin {
                 Some(session) => KeyAction::FocusSession(session),
+                None => KeyAction::None,
+            }
+        }
+        KeyCode::Char('x') if matches!(app.tab, Tab::Tasks) => {
+            match data
+                .filtered_tasks(app.tasks_filter)
+                .get(app.tasks_selected)
+                .filter(|task| !task.state.is_terminal())
+            {
+                Some(task) => KeyAction::Stop {
+                    id: task.id.clone(),
+                    kill: false,
+                },
+                None => KeyAction::None,
+            }
+        }
+        KeyCode::Char('X') if matches!(app.tab, Tab::Tasks) => {
+            match data
+                .filtered_tasks(app.tasks_filter)
+                .get(app.tasks_selected)
+                .filter(|task| !task.state.is_terminal())
+            {
+                Some(task) => KeyAction::Stop {
+                    id: task.id.clone(),
+                    kill: true,
+                },
                 None => KeyAction::None,
             }
         }
@@ -386,5 +419,35 @@ mod tests {
         );
 
         assert!(matches!(action, KeyAction::FocusSession(_)));
+    }
+
+    #[test]
+    fn x_keys_stop_active_task_only() {
+        let data = data::DashboardData {
+            generated_at: Utc::now(),
+            all_tasks: vec![task("a")],
+            all_summary: data::TaskSummary::from(&[task("a")]),
+            repo_counts: vec![],
+            runtime_counts: vec![],
+        };
+        let mut app = AppState {
+            tab: Tab::Tasks,
+            tasks_filter: TasksFilter::Active,
+            tasks_selected: 0,
+        };
+
+        let interrupt = handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+            &data,
+        );
+        assert!(matches!(interrupt, KeyAction::Stop { kill: false, .. }));
+
+        let kill = handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE),
+            &data,
+        );
+        assert!(matches!(kill, KeyAction::Stop { kill: true, .. }));
     }
 }
