@@ -1,5 +1,6 @@
 use crate::cli::OverviewScope;
 use crate::model::TaskState;
+use crate::runtime;
 use crate::store::Store;
 use crate::{overview_tui_data as data, overview_tui_render as render};
 use anyhow::{Result, anyhow};
@@ -85,6 +86,7 @@ enum KeyAction {
     None,
     Quit,
     Refresh,
+    FocusSession(String),
 }
 
 pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
@@ -121,6 +123,10 @@ pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
                         data = data::DashboardData::load(store)?;
                         app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
                         last_refresh = Instant::now();
+                    }
+                    KeyAction::FocusSession(session) => {
+                        runtime::focus_task_session(&session)?;
+                        break;
                     }
                     KeyAction::None => {}
                 },
@@ -197,6 +203,18 @@ fn handle_key(app: &mut AppState, key: KeyEvent, data: &data::DashboardData) -> 
             app.tasks_filter = app.tasks_filter.next();
             app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
             KeyAction::None
+        }
+        KeyCode::Enter if matches!(app.tab, Tab::Tasks) => {
+            let origin = data
+                .filtered_tasks(app.tasks_filter)
+                .get(app.tasks_selected)
+                .and_then(|task| (!task.state.is_terminal()).then(|| task.session.clone()))
+                .flatten();
+
+            match origin {
+                Some(session) => KeyAction::FocusSession(session),
+                None => KeyAction::None,
+            }
         }
         KeyCode::Up | KeyCode::Char('k') => {
             let len = data.filtered_tasks(app.tasks_filter).len();
@@ -341,5 +359,32 @@ mod tests {
         app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
 
         assert_eq!(app.tasks_selected, 1);
+    }
+
+    #[test]
+    fn enter_focuses_active_task_session() {
+        let mut active_task = task("a");
+        active_task.session = Some("session-a".to_string());
+
+        let data = data::DashboardData {
+            generated_at: Utc::now(),
+            all_tasks: vec![active_task],
+            all_summary: data::TaskSummary::from(&[task("a")]),
+            repo_counts: vec![],
+            runtime_counts: vec![],
+        };
+        let mut app = AppState {
+            tab: Tab::Tasks,
+            tasks_filter: TasksFilter::Active,
+            tasks_selected: 0,
+        };
+
+        let action = handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &data,
+        );
+
+        assert!(matches!(action, KeyAction::FocusSession(_)));
     }
 }

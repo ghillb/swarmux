@@ -109,6 +109,10 @@ pub fn attach_task(task: &TaskRecord) -> Result<()> {
     run_tmux(["attach-session", "-t", session]).map(|_| ())
 }
 
+pub fn focus_task_session(session: &str) -> Result<()> {
+    run_tmux(["switch-client", "-t", session]).map(|_| ())
+}
+
 pub fn read_logs(task: &TaskRecord, raw: bool, lines: usize) -> Result<String> {
     let text = tail_file(&task.log_file, lines)?;
     Ok(if raw { text } else { sanitize_logs(&text) })

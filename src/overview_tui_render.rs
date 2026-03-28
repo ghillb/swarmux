@@ -208,6 +208,11 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, data: &DashboardData, filtered
         Span::styled(" switch ", Style::default().fg(MUTED)),
         Span::styled("f", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
         Span::styled(" filter ", Style::default().fg(MUTED)),
+        Span::styled(
+            "enter",
+            Style::default().fg(GOOD).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" switch ", Style::default().fg(MUTED)),
         Span::styled("r", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
         Span::styled(" refresh ", Style::default().fg(MUTED)),
         Span::styled("q", Style::default().fg(BAD).add_modifier(Modifier::BOLD)),
