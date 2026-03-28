@@ -1,8 +1,8 @@
 # swarmux
 
-Agent-first tmux swarm orchestration for local coding tasks.
+Agent-first Rust CLI for tmux-first orchestration of local coding tasks.
 
-`swarmux` gives coding agents a narrow control plane for submitting, starting, inspecting, steering, reconciling, and pruning local work. Humans keep tmux visibility; agents get machine-readable commands and strict input validation.
+`swarmux` gives coding agents a narrow control plane for submitting, starting, inspecting, steering, reconciling, and pruning local work. Humans keep direct access and inspectability. Agents get machine-readable commands and strict input validation.
 
 ## Requirements
 
@@ -41,6 +41,10 @@ Structured commands emit JSON by default. Use `--output text` when you want the 
 
 `overview --tui` opens a two-tab dashboard: `Tasks` and `Stats`.
 Inside `Tasks`, press `f` to cycle `active -> terminal -> all`.
+
+## Screenshots
+
+![swarmux overview tasks](docs/assets/screenshots/overview.gif)
 
 tmux-friendly dispatch without JSON quoting:
 

@@ -138,7 +138,7 @@ fn draw_tasks(frame: &mut Frame<'_>, area: Rect, app: &AppState, tasks: &[&TaskR
         true,
         empty_tasks_message(app.tasks_filter),
     );
-    draw_detail_panel(frame, content[1], "Selected Task", selected);
+    draw_detail_panel(frame, content[1], "Task Details", selected);
 }
 
 fn draw_stats(frame: &mut Frame<'_>, area: Rect, data: &DashboardData) {

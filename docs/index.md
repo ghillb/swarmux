@@ -10,8 +10,9 @@ hide_title: true
     <p class="eyebrow">tmux-first local control plane</p>
     <h1 class="hero-title">swarmux</h1>
     <p class="lead">
-      Run coding tasks in local tmux sessions with deterministic task state and
-      operator visibility. Agents get a narrow CLI. Humans keep direct pane access.
+      Agent-first Rust CLI for running coding tasks in local tmux sessions with
+      deterministic task state and operator visibility. Agents get a narrow
+      control plane. Humans keep direct access and inspectability.
     </p>
     <div class="chips">
       <span class="chip">tmux visibility</span>
@@ -35,11 +36,16 @@ $ swarmux overview --tui</code></pre>
   </div>
 </div>
 
+<div class="screenshots">
+  <img src="{{ '/assets/screenshots/overview.png' | relative_url }}" alt="swarmux overview tasks screenshot" class="shot shot-wide">
+</div>
+
 ## Why swarmux
 
-- Run task commands in tmux sessions that operators can inspect live.
+- swarmux extends tmux instead of introducing a separate orchestration runtime.
+- Run each task in its own tmux session and git worktree, with direct operator visibility.
 - Keep agent automation scriptable via JSON output by default.
-- Reconcile task state after process exit or session loss.
+- Add task-aware TUIs and agent-agnostic task management around the existing tmux workflow.
 - Prune managed worktrees and sessions after terminal states.
 
 ## Next step

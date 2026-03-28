@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b0f14">
     {% seo %}
-    <link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}?v={{ site.time | date: '%Y%m%d%H%M%S' }}">
   </head>
   <body>
     <header class="site-header">

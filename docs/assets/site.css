@@ -117,6 +117,21 @@ body {
   line-height: 1.7;
 }
 
+.screenshots {
+  margin-top: 24px;
+}
+
+.screenshots .shot {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #09111d;
+  box-shadow: 0 16px 32px rgba(1, 7, 18, 0.35);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
