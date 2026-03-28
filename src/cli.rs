@@ -52,6 +52,9 @@ pub struct SubmitArgs {
     #[arg(long)]
     pub dry_run: bool,
 
+    #[arg(long)]
+    pub human: bool,
+
     #[arg(long, conflicts_with = "json_file")]
     pub json: Option<String>,
 
@@ -63,6 +66,9 @@ pub struct SubmitArgs {
 pub struct DispatchArgs {
     #[arg(long)]
     pub dry_run: bool,
+
+    #[arg(long)]
+    pub human: bool,
 
     #[arg(long)]
     pub title: Option<String>,

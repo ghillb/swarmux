@@ -106,8 +106,10 @@ command = ["codex", "exec"]
 ```
 
 ```bash
-swarmux dispatch --connected --prompt "fix tests"
+swarmux dispatch --connected --human --prompt "fix tests"
 ```
+
+Add `--human` when you want a compact task summary instead of the JSON response.
 
 Actual TUI runtime in a task session:
 

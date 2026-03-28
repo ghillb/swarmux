@@ -108,8 +108,10 @@ command = ["codex", "exec"]
 Then connected dispatch can omit the command prefix:
 
 ```bash
-swarmux dispatch --connected --prompt "fix tests"
+swarmux dispatch --connected --human --prompt "fix tests"
 ```
+
+Use `--human` when you want a compact summary instead of the JSON response.
 
 Manual TUI task:
 

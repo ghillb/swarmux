@@ -136,6 +136,9 @@ fn run_submit(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result<(
     validation::validate_submit_payload(&payload)?;
 
     if args.dry_run {
+        if args.human {
+            return emit_submit_human(&payload);
+        }
         return emit(
             &output,
             &DryRunSubmitResponse {
@@ -150,6 +153,9 @@ fn run_submit(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result<(
         config::BackendKind::Files => store.submit(payload)?,
         config::BackendKind::Beads => beads::submit(store.paths(), payload)?,
     };
+    if args.human {
+        return emit_task_human("submitted", &task);
+    }
     emit(&output, &task)
 }
 
@@ -174,13 +180,14 @@ fn run_start(store: &Store, output: OutputFormat, args: IdArgs) -> Result<()> {
 
 fn run_delegate(store: &Store, output: OutputFormat, args: SubmitArgs) -> Result<()> {
     let payload = read_submit_payload(&args)?;
-    run_delegate_payload(store, output, payload, args.dry_run, "delegate")
+    run_delegate_payload(store, output, payload, args.dry_run, args.human, "delegate")
 }
 
 fn run_dispatch(store: &Store, output: OutputFormat, args: DispatchArgs) -> Result<()> {
     let dry_run = args.dry_run;
+    let human = args.human;
     let payload = submit_payload_from_dispatch(store.paths(), args)?;
-    run_delegate_payload(store, output, payload, dry_run, "dispatch")
+    run_delegate_payload(store, output, payload, dry_run, human, "dispatch")
 }
 
 fn read_submit_payload(args: &SubmitArgs) -> Result<SubmitPayload> {
@@ -575,11 +582,15 @@ fn run_delegate_payload(
     output: OutputFormat,
     payload: SubmitPayload,
     dry_run: bool,
+    human: bool,
     command_name: &str,
 ) -> Result<()> {
     validation::validate_submit_payload(&payload)?;
 
     if dry_run {
+        if human {
+            return emit_submit_human(&payload);
+        }
         return emit(
             &output,
             &json!({
@@ -610,6 +621,9 @@ fn run_delegate_payload(
                 started.last_error.clone(),
             )?;
         }
+    }
+    if human {
+        return emit_task_human(&format!("{command_name} started"), &started);
     }
     emit(
         &output,
@@ -1080,6 +1094,72 @@ fn state_label(state: &TaskState) -> &'static str {
         TaskState::Failed => "failed",
         TaskState::Canceled => "canceled",
     }
+}
+
+fn runtime_label(runtime: TaskRuntime) -> &'static str {
+    match runtime {
+        TaskRuntime::Headless => "headless",
+        TaskRuntime::Mirrored => "mirrored",
+        TaskRuntime::Tui => "tui",
+    }
+}
+
+fn mode_label(mode: &TaskMode) -> &'static str {
+    match mode {
+        TaskMode::Auto => "auto",
+        TaskMode::Manual => "manual",
+    }
+}
+
+fn emit_submit_human(payload: &SubmitPayload) -> Result<()> {
+    println!("dry-run");
+    println!("title: {}", payload.title);
+    println!("repo: {}", payload.repo_ref);
+    println!("root: {}", payload.repo_root);
+    println!("mode: {}", mode_label(&payload.mode));
+    println!("runtime: {}", runtime_label(payload.runtime));
+    println!("command: {}", payload.command.join(" "));
+    if let Some(session) = &payload.session {
+        println!("session: {}", session);
+    }
+    if let Some(worktree) = &payload.worktree {
+        println!("worktree: {}", worktree);
+    }
+    if let Some(origin) = &payload.origin {
+        println!(
+            "origin: {} {} {}",
+            origin.session_name, origin.window_name, origin.pane_id
+        );
+    }
+
+    Ok(())
+}
+
+fn emit_task_human(label: &str, task: &TaskRecord) -> Result<()> {
+    println!("{} {}", label, task.id);
+    println!("title: {}", task.title);
+    println!("state: {}", state_label(&task.state));
+    println!("runtime: {}", runtime_label(task.runtime));
+    println!("repo: {}", task.repo);
+    println!("root: {}", task.repo_root);
+    println!("command: {}", task.command.join(" "));
+    if let Some(session) = &task.session {
+        println!("session: {}", session);
+    }
+    if let Some(branch) = &task.branch {
+        println!("branch: {}", branch);
+    }
+    if let Some(worktree) = &task.worktree {
+        println!("worktree: {}", worktree);
+    }
+    if let Some(origin) = &task.origin {
+        println!(
+            "origin: {} {} {}",
+            origin.session_name, origin.window_name, origin.pane_id
+        );
+    }
+
+    Ok(())
 }
 
 fn parse_wait_states(raw: Option<&str>) -> Result<BTreeSet<String>> {

@@ -110,6 +110,33 @@ fn submit_supports_raw_json_payloads_in_dry_run_mode() {
 }
 
 #[test]
+fn dispatch_human_dry_run_prints_summary_text() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args([
+        "dispatch",
+        "--dry-run",
+        "--human",
+        "--repo-ref",
+        "core",
+        "--repo-root",
+        "/tmp/core",
+        "--title",
+        "Human task",
+        "--",
+        "codex",
+        "hi",
+    ]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dry-run"))
+        .stdout(predicate::str::contains("title: Human task"))
+        .stdout(predicate::str::contains("repo: core"))
+        .stdout(predicate::str::contains("command: codex hi"))
+        .stdout(predicate::str::contains("{").not());
+}
+
+#[test]
 fn schema_supports_explicit_text_output() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
     command.args(["--output", "text", "schema"]);
