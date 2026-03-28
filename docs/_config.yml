@@ -1,5 +1,5 @@
 title: "swarmux"
-tagline: "Agent-first tmux swarm orchestration"
+tagline: "Agent-native tmux swarm orchestration"
 description: "Local tmux control plane for coding tasks."
 url: "http://gerohillebrandt.de"
 baseurl: "/swarmux"

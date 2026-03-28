@@ -1,6 +1,6 @@
 # swarmux
 
-Agent-first Rust CLI for tmux-first orchestration of local coding tasks.
+Agent-native Rust CLI for tmux-based orchestration of local coding tasks.
 
 `swarmux` gives coding agents a narrow control plane for submitting, starting, inspecting, steering, reconciling, and pruning local work. Humans keep direct access and inspectability. Agents get machine-readable commands and strict input validation.
 

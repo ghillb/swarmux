@@ -10,9 +10,9 @@ hide_title: true
     <p class="eyebrow">tmux-first local control plane</p>
     <h1 class="hero-title">swarmux</h1>
     <p class="lead">
-      Agent-first Rust CLI for running coding tasks in local tmux sessions with
-      deterministic task state and operator visibility. Agents get a narrow
-      control plane. Humans keep direct access and inspectability.
+      Agent-native Rust CLI for tmux-based orchestration of local coding tasks.
+      Tasks run in local tmux sessions with deterministic task state and direct
+      human access and inspectability.
     </p>
     <div class="chips">
       <span class="chip">tmux visibility</span>

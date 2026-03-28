@@ -1,9 +1,9 @@
 [package]
 name = "swarmux"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 rust-version = "1.85"
-description = "Agent-first tmux swarm orchestration CLI for coding tasks."
+description = "Agent-native tmux swarm orchestration CLI for coding tasks."
 license = "MIT"
 repository = "https://github.com/ghillb/swarmux"
 readme = "README.md"
