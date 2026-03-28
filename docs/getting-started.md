@@ -165,13 +165,13 @@ Connected dispatch still appends `--prompt` as the trailing command argument for
 
 ## tmux popup mapping
 
-Use this mapping to open the live dashboard in a borderless full-screen popup:
+Use this mapping to open the tasks dashboard in a borderless full-screen popup:
 
 ```tmux
 bind -n <key> display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux overview --tui'"
 ```
 
-Use left/right to switch between the `Overview`, `Operational`, and `Client All` tabs.
+Use left/right to switch between the `Tasks` and `Stats` tabs. Inside `Tasks`, press `f` to cycle `active -> terminal -> all`.
 
 Reload tmux:
 
@@ -179,8 +179,8 @@ Reload tmux:
 tmux source-file ~/.config/tmux/tmux.conf
 ```
 
-`overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`.
-Use `swarmux overview --tui` for the interactive dashboard and `swarmux overview --once` for a snapshot.
+`overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`, which maps to the `active` TUI filter.
+Use `swarmux overview --tui` for the interactive tasks dashboard and `swarmux overview --once` for a snapshot.
 Use `swarmux panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
 The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions. The custom switchers also have per-mode current-session filters:
 

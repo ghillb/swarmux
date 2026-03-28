@@ -1,5 +1,5 @@
 use crate::model::TaskRecord;
-use crate::overview_tui::{AppState, Tab};
+use crate::overview_tui::{AppState, Tab, TasksFilter};
 use crate::overview_tui_data::DashboardData;
 use crate::overview_tui_helpers::{
     metric_line, relative_time, render_counts, selected_task, status_spans, task_detail_lines,
@@ -9,7 +9,7 @@ use crate::panes_support::{runtime_label, task_state_label};
 use ratatui::prelude::*;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs, Wrap};
+use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap};
 
 const TEXT: Color = Color::Rgb(232, 235, 241);
 const MUTED: Color = Color::Rgb(134, 144, 160);
@@ -17,236 +17,179 @@ const ACCENT: Color = Color::Rgb(88, 214, 255);
 const GOOD: Color = Color::Rgb(96, 255, 160);
 const WARN: Color = Color::Rgb(255, 204, 102);
 const BAD: Color = Color::Rgb(255, 108, 108);
-const VIOLET: Color = Color::Rgb(191, 150, 255);
 const TEAL: Color = Color::Rgb(95, 241, 223);
 const WIDE_BREAKPOINT: u16 = 124;
 
 pub(crate) fn draw(frame: &mut Frame<'_>, app: &AppState, data: &DashboardData) {
+    let filtered_tasks = data.filtered_tasks(app.tasks_filter);
     let outer = Layout::vertical([
-        Constraint::Length(5),
         Constraint::Length(3),
         Constraint::Min(0),
         Constraint::Length(2),
     ])
     .split(frame.area());
 
-    draw_header(frame, outer[0], app, data);
-    draw_tabs(frame, outer[1], app);
+    draw_header(frame, outer[0], app, data, &filtered_tasks);
 
     match app.tab {
-        Tab::Overview => draw_overview(frame, outer[2], app, data),
-        Tab::Operational => draw_operational(frame, outer[2], app, data),
-        Tab::ClientAll => draw_client_all(frame, outer[2], app, data),
+        Tab::Tasks => draw_tasks(frame, outer[1], app, &filtered_tasks),
+        Tab::Stats => draw_stats(frame, outer[1], data),
     }
 
-    draw_footer(frame, outer[3], data);
+    draw_footer(frame, outer[2], data, filtered_tasks.len());
 }
 
-fn draw_header(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &DashboardData) {
-    let title = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(
-                "SWARMUX",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled(
-                "OVERVIEW",
-                Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(status_spans(app, data)),
-    ])
-    .block(
-        Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(MUTED)),
-    )
-    .wrap(Wrap { trim: true });
-
-    frame.render_widget(title, area);
-}
-
-fn draw_tabs(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let tabs = Tabs::new(vec![
-        Line::from("Overview"),
-        Line::from("Live"),
-        Line::from("All Tasks"),
-    ])
-    .select(match app.tab {
-        Tab::Overview => 0,
-        Tab::Operational => 1,
-        Tab::ClientAll => 2,
-    })
-    .divider(Span::styled("│", Style::default().fg(MUTED)))
-    .highlight_style(
-        Style::default()
-            .fg(ACCENT)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    )
-    .style(Style::default().fg(MUTED))
-    .block(
-        Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(MUTED)),
-    );
-
-    frame.render_widget(tabs, area);
-}
-
-fn draw_overview(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &DashboardData) {
-    let body = Layout::vertical([Constraint::Length(7), Constraint::Min(0)]).split(area);
-    let cards = Layout::horizontal([
-        Constraint::Percentage(33),
-        Constraint::Percentage(34),
-        Constraint::Percentage(33),
-    ])
-    .split(body[0]);
-
-    draw_card(
-        frame,
-        cards[0],
-        "Live",
-        vec![
-            metric_line("visible", data.visible_summary.total, GOOD),
-            metric_line("active", data.visible_summary.active(), ACCENT),
-            metric_line("terminal", data.visible_summary.terminal(), WARN),
-        ],
-    );
-    draw_card(
-        frame,
-        cards[1],
-        "Mix",
-        vec![
-            metric_line("queued", data.visible_summary.queued, MUTED),
-            metric_line("running", data.visible_summary.running, GOOD),
-            metric_line("waiting", data.visible_summary.waiting_input, WARN),
-            metric_line("manual", data.visible_summary.manual, VIOLET),
-            metric_line("auto", data.visible_summary.auto, TEAL),
-        ],
-    );
-    draw_card(
-        frame,
-        cards[2],
-        "Scope",
-        vec![
-            metric_line("filtered", data.visible_summary.total, GOOD),
-            metric_line("all", data.all_summary.total, ACCENT),
-            metric_line("live sessions", data.visible_live_sessions, WARN),
-        ],
-    );
-
-    let selected = selected_task(Tab::Overview, app, data);
-    let content = if area.width >= WIDE_BREAKPOINT {
-        Layout::horizontal([Constraint::Percentage(64), Constraint::Percentage(36)]).split(body[1])
+fn draw_header(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &AppState,
+    data: &DashboardData,
+    tasks: &[&TaskRecord],
+) {
+    let selected = if matches!(app.tab, Tab::Tasks) {
+        selected_task(tasks, app.tasks_selected)
     } else {
-        Layout::vertical([Constraint::Percentage(64), Constraint::Percentage(36)]).split(body[1])
+        None
+    };
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(MUTED)),
+        area,
+    );
+
+    let content = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: area.height.saturating_sub(1),
+    };
+    let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(content);
+    let top = Layout::horizontal([Constraint::Min(0), Constraint::Length(13)]).split(rows[0]);
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled(
+            "SWARMUX",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            "TASKS",
+            Style::default().fg(TEXT).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(title, top[0]);
+
+    let tabs = Paragraph::new(Line::from(vec![
+        Span::styled(
+            "Tasks",
+            if matches!(app.tab, Tab::Tasks) {
+                Style::default()
+                    .fg(ACCENT)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else {
+                Style::default().fg(MUTED)
+            },
+        ),
+        Span::styled(" │ ", Style::default().fg(MUTED)),
+        Span::styled(
+            "Stats",
+            if matches!(app.tab, Tab::Stats) {
+                Style::default()
+                    .fg(ACCENT)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else {
+                Style::default().fg(MUTED)
+            },
+        ),
+    ]))
+    .alignment(Alignment::Right);
+    frame.render_widget(tabs, top[1]);
+
+    let status = Paragraph::new(Line::from(status_spans(
+        if matches!(app.tab, Tab::Tasks) {
+            Some(app.tasks_filter)
+        } else {
+            None
+        },
+        app.tasks_selected,
+        tasks.len(),
+        selected,
+        data,
+    )))
+    .style(Style::default().fg(MUTED));
+    frame.render_widget(status, rows[1]);
+}
+
+fn draw_tasks(frame: &mut Frame<'_>, area: Rect, app: &AppState, tasks: &[&TaskRecord]) {
+    let selected = selected_task(tasks, app.tasks_selected);
+    let content = if area.width >= WIDE_BREAKPOINT {
+        Layout::horizontal([Constraint::Percentage(68), Constraint::Percentage(32)]).split(area)
+    } else {
+        Layout::vertical([Constraint::Percentage(68), Constraint::Percentage(32)]).split(area)
     };
 
     draw_task_table(
         frame,
         content[0],
-        "Recent Tasks",
-        &data.visible_tasks,
-        app.overview_selected,
-        false,
+        "Tasks",
+        tasks,
+        app.tasks_selected,
+        true,
+        empty_tasks_message(app.tasks_filter),
     );
     draw_detail_panel(frame, content[1], "Selected Task", selected);
 }
 
-fn draw_operational(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &DashboardData) {
-    let body = Layout::vertical([Constraint::Length(7), Constraint::Min(0)]).split(area);
-    let top = Layout::horizontal([
-        Constraint::Percentage(33),
-        Constraint::Percentage(33),
-        Constraint::Percentage(34),
-    ])
-    .split(body[0]);
+fn draw_stats(frame: &mut Frame<'_>, area: Rect, data: &DashboardData) {
+    let cards = if area.width >= WIDE_BREAKPOINT {
+        Layout::horizontal([
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+        ])
+        .split(area)
+    } else {
+        Layout::vertical([
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+        ])
+        .split(area)
+    };
 
     draw_card(
         frame,
-        top[0],
-        "Flow",
+        cards[0],
+        "State",
         vec![
+            metric_line("total", data.all_summary.total, GOOD),
+            metric_line("active", data.all_summary.active(), ACCENT),
+            metric_line("terminal", data.all_summary.terminal(), WARN),
             metric_line("queued", data.all_summary.queued, MUTED),
             metric_line("dispatching", data.all_summary.dispatching, WARN),
             metric_line("running", data.all_summary.running, GOOD),
-            metric_line("waiting", data.all_summary.waiting_input, BAD),
-        ],
-    );
-    draw_card(
-        frame,
-        top[1],
-        "Health",
-        vec![
+            metric_line("waiting", data.all_summary.waiting_input, WARN),
             metric_line("succeeded", data.all_summary.succeeded, GOOD),
             metric_line("failed", data.all_summary.failed, BAD),
             metric_line("canceled", data.all_summary.canceled, MUTED),
-            metric_line("terminal", data.all_summary.terminal(), ACCENT),
         ],
     );
     draw_card(
         frame,
-        top[2],
-        "Mix",
-        vec![
-            metric_line("auto", data.all_summary.auto, TEAL),
-            metric_line("manual", data.all_summary.manual, VIOLET),
-            metric_line("headless", data.all_summary.headless, ACCENT),
-            metric_line("mirrored", data.all_summary.mirrored, GOOD),
-            metric_line("tui", data.all_summary.tui, WARN),
-        ],
+        cards[1],
+        "Runtime",
+        render_counts(&data.runtime_counts, TEAL),
     );
-
-    let selected = selected_task(Tab::Operational, app, data);
-    let bottom = if area.width >= WIDE_BREAKPOINT {
-        Layout::horizontal([Constraint::Percentage(58), Constraint::Percentage(42)]).split(body[1])
-    } else {
-        Layout::vertical([Constraint::Percentage(58), Constraint::Percentage(42)]).split(body[1])
-    };
-
-    let stats = if area.width >= WIDE_BREAKPOINT {
-        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).split(bottom[0])
-    } else {
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(bottom[0])
-    };
-
     draw_card(
         frame,
-        stats[0],
+        cards[2],
         "Repositories",
         render_counts(&data.repo_counts, GOOD),
     );
-    draw_card(
-        frame,
-        stats[1],
-        "Runtime",
-        render_counts(&data.runtime_counts, ACCENT),
-    );
-    draw_detail_panel(frame, bottom[1], "Selected Task", selected);
 }
 
-fn draw_client_all(frame: &mut Frame<'_>, area: Rect, app: &AppState, data: &DashboardData) {
-    let selected = selected_task(Tab::ClientAll, app, data);
-    let body = if area.width >= WIDE_BREAKPOINT {
-        Layout::horizontal([Constraint::Percentage(68), Constraint::Percentage(32)]).split(area)
-    } else {
-        Layout::vertical([Constraint::Percentage(66), Constraint::Percentage(34)]).split(area)
-    };
-
-    draw_task_table(
-        frame,
-        body[0],
-        "Client All",
-        &data.all_tasks,
-        app.client_selected,
-        true,
-    );
-    draw_detail_panel(frame, body[1], "Selected Task", selected);
-}
-
-fn draw_footer(frame: &mut Frame<'_>, area: Rect, data: &DashboardData) {
+fn draw_footer(frame: &mut Frame<'_>, area: Rect, data: &DashboardData, filtered: usize) {
     let footer = Paragraph::new(vec![Line::from(vec![
         Span::styled(
             "j/k",
@@ -263,15 +206,14 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, data: &DashboardData) {
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" switch ", Style::default().fg(MUTED)),
+        Span::styled("f", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
+        Span::styled(" filter ", Style::default().fg(MUTED)),
         Span::styled("r", Style::default().fg(GOOD).add_modifier(Modifier::BOLD)),
         Span::styled(" refresh ", Style::default().fg(MUTED)),
         Span::styled("q", Style::default().fg(BAD).add_modifier(Modifier::BOLD)),
         Span::styled(" quit ", Style::default().fg(MUTED)),
         Span::styled(
-            format!(
-                "{} visible / {} total",
-                data.visible_summary.total, data.all_summary.total
-            ),
+            format!("{} tasks / {} total", filtered, data.all_summary.total),
             Style::default().fg(WARN).add_modifier(Modifier::BOLD),
         ),
     ])])
@@ -320,9 +262,10 @@ fn draw_task_table(
     frame: &mut Frame<'_>,
     area: Rect,
     title: &str,
-    tasks: &[TaskRecord],
+    tasks: &[&TaskRecord],
     selected: usize,
     show_session: bool,
+    empty_message: &'static str,
 ) {
     let block = Block::default()
         .title(title)
@@ -331,9 +274,15 @@ fn draw_task_table(
 
     if tasks.is_empty() {
         frame.render_widget(
-            Paragraph::new("no tasks")
-                .style(Style::default().fg(MUTED))
-                .block(block),
+            Paragraph::new(vec![
+                Line::from(Span::styled(empty_message, Style::default().fg(MUTED))),
+                Line::from(Span::styled(
+                    "press f to cycle active / terminal / all",
+                    Style::default().fg(MUTED),
+                )),
+            ])
+            .style(Style::default().fg(MUTED))
+            .block(block),
             area,
         );
         return;
@@ -435,4 +384,12 @@ fn task_row(task: &TaskRecord, selected: bool, show_session: bool) -> Row<'stati
     } else {
         Style::default().fg(TEXT)
     })
+}
+
+fn empty_tasks_message(filter: TasksFilter) -> &'static str {
+    match filter {
+        TasksFilter::Active => "no active tasks",
+        TasksFilter::Terminal => "no terminal tasks",
+        TasksFilter::All => "no tasks",
+    }
 }

@@ -1,4 +1,5 @@
 use crate::cli::OverviewScope;
+use crate::model::TaskState;
 use crate::store::Store;
 use crate::{overview_tui_data as data, overview_tui_render as render};
 use anyhow::{Result, anyhow};
@@ -18,26 +19,64 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Tab {
-    Overview,
-    Operational,
-    ClientAll,
+    Tasks,
+    Stats,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TasksFilter {
+    Active,
+    Terminal,
+    All,
+}
+
+impl TasksFilter {
+    pub(super) fn from_scope(scope: OverviewScope) -> Self {
+        match scope {
+            OverviewScope::Terminal => Self::Terminal,
+            OverviewScope::NonTerminal => Self::Active,
+            OverviewScope::All => Self::All,
+        }
+    }
+
+    pub(super) fn next(self) -> Self {
+        match self {
+            Self::Active => Self::Terminal,
+            Self::Terminal => Self::All,
+            Self::All => Self::Active,
+        }
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Terminal => "terminal",
+            Self::All => "all",
+        }
+    }
+
+    pub(super) fn matches(self, state: &TaskState) -> bool {
+        match self {
+            Self::Active => !state.is_terminal(),
+            Self::Terminal => state.is_terminal(),
+            Self::All => true,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub(super) struct AppState {
     pub(super) tab: Tab,
-    pub(super) overview_selected: usize,
-    pub(super) operational_selected: usize,
-    pub(super) client_selected: usize,
+    pub(super) tasks_filter: TasksFilter,
+    pub(super) tasks_selected: usize,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            tab: Tab::Overview,
-            overview_selected: 0,
-            operational_selected: 0,
-            client_selected: 0,
+            tab: Tab::Tasks,
+            tasks_filter: TasksFilter::Active,
+            tasks_selected: 0,
         }
     }
 }
@@ -54,9 +93,12 @@ pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
     }
 
     let mut session = TerminalSession::new()?;
-    let mut app = AppState::default();
-    let mut data = data::DashboardData::load(store, scope)?;
-    app.clamp_to(&data);
+    let mut app = AppState {
+        tasks_filter: TasksFilter::from_scope(scope),
+        ..AppState::default()
+    };
+    let mut data = data::DashboardData::load(store)?;
+    app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
     let mut last_refresh = Instant::now();
 
     loop {
@@ -76,8 +118,8 @@ pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
                 Event::Key(key) => match handle_key(&mut app, key, &data) {
                     KeyAction::Quit => break,
                     KeyAction::Refresh => {
-                        data = data::DashboardData::load(store, scope)?;
-                        app.clamp_to(&data);
+                        data = data::DashboardData::load(store)?;
+                        app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
                         last_refresh = Instant::now();
                     }
                     KeyAction::None => {}
@@ -88,8 +130,8 @@ pub fn run(store: &Store, scope: OverviewScope) -> Result<()> {
         }
 
         if last_refresh.elapsed() >= REFRESH_INTERVAL {
-            data = data::DashboardData::load(store, scope)?;
-            app.clamp_to(&data);
+            data = data::DashboardData::load(store)?;
+            app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
             last_refresh = Instant::now();
         }
     }
@@ -121,17 +163,14 @@ impl Drop for TerminalSession {
 }
 
 impl AppState {
-    fn clamp_to(&mut self, data: &data::DashboardData) {
-        self.overview_selected = clamp_index(self.overview_selected, data.visible_tasks.len());
-        self.operational_selected = clamp_index(self.operational_selected, data.all_tasks.len());
-        self.client_selected = clamp_index(self.client_selected, data.all_tasks.len());
+    fn clamp_to(&mut self, tasks_len: usize) {
+        self.tasks_selected = clamp_index(self.tasks_selected, tasks_len);
     }
 
-    fn selected_mut(&mut self) -> &mut usize {
+    fn selected_mut(&mut self) -> Option<&mut usize> {
         match self.tab {
-            Tab::Overview => &mut self.overview_selected,
-            Tab::Operational => &mut self.operational_selected,
-            Tab::ClientAll => &mut self.client_selected,
+            Tab::Tasks => Some(&mut self.tasks_selected),
+            Tab::Stats => None,
         }
     }
 }
@@ -142,58 +181,66 @@ fn handle_key(app: &mut AppState, key: KeyEvent, data: &data::DashboardData) -> 
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => KeyAction::Quit,
         KeyCode::Left | KeyCode::Char('h') => {
             app.tab = match app.tab {
-                Tab::Overview => Tab::ClientAll,
-                Tab::Operational => Tab::Overview,
-                Tab::ClientAll => Tab::Operational,
+                Tab::Tasks => Tab::Stats,
+                Tab::Stats => Tab::Tasks,
             };
             KeyAction::None
         }
         KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => {
             app.tab = match app.tab {
-                Tab::Overview => Tab::Operational,
-                Tab::Operational => Tab::ClientAll,
-                Tab::ClientAll => Tab::Overview,
+                Tab::Tasks => Tab::Stats,
+                Tab::Stats => Tab::Tasks,
             };
             KeyAction::None
         }
+        KeyCode::Char('f') if matches!(app.tab, Tab::Tasks) => {
+            app.tasks_filter = app.tasks_filter.next();
+            app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
+            KeyAction::None
+        }
         KeyCode::Up | KeyCode::Char('k') => {
-            let len = tab_len(app.tab, data);
-            move_selection(app.selected_mut(), len, -1);
+            let len = data.filtered_tasks(app.tasks_filter).len();
+            if let Some(selected) = app.selected_mut() {
+                move_selection(selected, len, -1);
+            }
             KeyAction::None
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            let len = tab_len(app.tab, data);
-            move_selection(app.selected_mut(), len, 1);
+            let len = data.filtered_tasks(app.tasks_filter).len();
+            if let Some(selected) = app.selected_mut() {
+                move_selection(selected, len, 1);
+            }
             KeyAction::None
         }
         KeyCode::PageUp => {
-            let len = tab_len(app.tab, data);
-            move_selection(app.selected_mut(), len, -8);
+            let len = data.filtered_tasks(app.tasks_filter).len();
+            if let Some(selected) = app.selected_mut() {
+                move_selection(selected, len, -8);
+            }
             KeyAction::None
         }
         KeyCode::PageDown => {
-            let len = tab_len(app.tab, data);
-            move_selection(app.selected_mut(), len, 8);
+            let len = data.filtered_tasks(app.tasks_filter).len();
+            if let Some(selected) = app.selected_mut() {
+                move_selection(selected, len, 8);
+            }
             KeyAction::None
         }
         KeyCode::Home => {
-            *app.selected_mut() = 0;
+            if let Some(selected) = app.selected_mut() {
+                *selected = 0;
+            }
             KeyAction::None
         }
         KeyCode::End => {
-            let len = tab_len(app.tab, data);
-            *app.selected_mut() = len.saturating_sub(1);
+            let len = data.filtered_tasks(app.tasks_filter).len();
+            if let Some(selected) = app.selected_mut() {
+                *selected = len.saturating_sub(1);
+            }
             KeyAction::None
         }
         KeyCode::Char('r') => KeyAction::Refresh,
         _ => KeyAction::None,
-    }
-}
-
-fn tab_len(tab: Tab, data: &data::DashboardData) -> usize {
-    match tab {
-        Tab::Overview => data.visible_tasks.len(),
-        Tab::Operational | Tab::ClientAll => data.all_tasks.len(),
     }
 }
 
@@ -255,29 +302,44 @@ mod tests {
     }
 
     #[test]
-    fn clamp_to_limits_each_tab_selection() {
+    fn tasks_filter_cycles_and_maps_scope() {
+        assert_eq!(
+            TasksFilter::from_scope(OverviewScope::NonTerminal),
+            TasksFilter::Active
+        );
+        assert_eq!(
+            TasksFilter::from_scope(OverviewScope::Terminal),
+            TasksFilter::Terminal
+        );
+        assert_eq!(
+            TasksFilter::from_scope(OverviewScope::All),
+            TasksFilter::All
+        );
+        assert_eq!(TasksFilter::Active.next(), TasksFilter::Terminal);
+        assert_eq!(TasksFilter::Terminal.next(), TasksFilter::All);
+        assert_eq!(TasksFilter::All.next(), TasksFilter::Active);
+        assert!(!TasksFilter::Active.matches(&TaskState::Succeeded));
+        assert!(TasksFilter::Terminal.matches(&TaskState::Succeeded));
+        assert!(TasksFilter::All.matches(&TaskState::Succeeded));
+    }
+
+    #[test]
+    fn clamp_to_limits_tasks_selection() {
         let data = data::DashboardData {
             generated_at: Utc::now(),
-            scope: OverviewScope::All,
-            visible_tasks: vec![task("a")],
             all_tasks: vec![task("a"), task("b")],
-            visible_summary: data::TaskSummary::from(&[task("a")]),
             all_summary: data::TaskSummary::from(&[task("a"), task("b")]),
-            visible_live_sessions: 0,
             repo_counts: vec![],
             runtime_counts: vec![],
         };
         let mut app = AppState {
-            tab: Tab::Overview,
-            overview_selected: 9,
-            operational_selected: 8,
-            client_selected: 7,
+            tab: Tab::Tasks,
+            tasks_filter: TasksFilter::Active,
+            tasks_selected: 9,
         };
 
-        app.clamp_to(&data);
+        app.clamp_to(data.filtered_tasks(app.tasks_filter).len());
 
-        assert_eq!(app.overview_selected, 0);
-        assert_eq!(app.operational_selected, 1);
-        assert_eq!(app.client_selected, 1);
+        assert_eq!(app.tasks_selected, 1);
     }
 }

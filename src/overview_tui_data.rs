@@ -1,10 +1,7 @@
-use crate::cli::OverviewScope;
-use crate::config::TaskRuntime;
-use crate::model::{TaskMode, TaskRecord, TaskState};
-use crate::overview_scope_matches;
+use crate::model::{TaskRecord, TaskState};
+use crate::overview_tui::TasksFilter;
 use crate::panes_support::runtime_label;
 use crate::reconcile_store;
-use crate::runtime::has_tmux_session;
 use crate::store::Store;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -20,12 +17,6 @@ pub(crate) struct TaskSummary {
     pub(crate) succeeded: usize,
     pub(crate) failed: usize,
     pub(crate) canceled: usize,
-    pub(crate) manual: usize,
-    pub(crate) auto: usize,
-    pub(crate) headless: usize,
-    pub(crate) mirrored: usize,
-    pub(crate) tui: usize,
-    pub(crate) with_session: usize,
 }
 
 impl TaskSummary {
@@ -45,18 +36,6 @@ impl TaskSummary {
                 TaskState::Failed => summary.failed += 1,
                 TaskState::Canceled => summary.canceled += 1,
             }
-
-            summary.with_session += usize::from(task.session.is_some());
-            match task.mode {
-                TaskMode::Manual => summary.manual += 1,
-                TaskMode::Auto => summary.auto += 1,
-            }
-
-            match task.runtime {
-                TaskRuntime::Headless => summary.headless += 1,
-                TaskRuntime::Mirrored => summary.mirrored += 1,
-                TaskRuntime::Tui => summary.tui += 1,
-            }
         }
 
         summary
@@ -74,60 +53,38 @@ impl TaskSummary {
 #[derive(Clone, Debug)]
 pub(crate) struct DashboardData {
     pub(crate) generated_at: DateTime<Utc>,
-    pub(crate) scope: OverviewScope,
-    pub(crate) visible_tasks: Vec<TaskRecord>,
     pub(crate) all_tasks: Vec<TaskRecord>,
-    pub(crate) visible_summary: TaskSummary,
     pub(crate) all_summary: TaskSummary,
-    pub(crate) visible_live_sessions: usize,
     pub(crate) repo_counts: Vec<(String, usize)>,
     pub(crate) runtime_counts: Vec<(String, usize)>,
 }
 
 impl DashboardData {
-    pub(crate) fn load(store: &Store, scope: OverviewScope) -> Result<Self> {
+    pub(crate) fn load(store: &Store) -> Result<Self> {
         reconcile_store(store)?;
         let mut all_tasks = store.list()?;
         all_tasks.sort_by_key(|task| (task.updated_at, task.created_at));
         all_tasks.reverse();
 
-        let visible_tasks = all_tasks
-            .iter()
-            .filter(|task| overview_scope_matches(&task.state, &scope))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        let visible_summary = TaskSummary::from(&visible_tasks);
         let all_summary = TaskSummary::from(&all_tasks);
-        let visible_live_sessions = count_live_sessions(&visible_tasks)?;
         let repo_counts = count_by(&all_tasks, |task| task.repo.clone(), 5);
         let runtime_counts = count_by(&all_tasks, |task| runtime_label(task).to_string(), 3);
 
         Ok(Self {
             generated_at: Utc::now(),
-            scope,
-            visible_tasks,
             all_tasks,
-            visible_summary,
             all_summary,
-            visible_live_sessions,
             repo_counts,
             runtime_counts,
         })
     }
-}
 
-fn count_live_sessions(tasks: &[TaskRecord]) -> Result<usize> {
-    let mut live = 0usize;
-    for task in tasks {
-        let Some(session) = task.session.as_deref() else {
-            continue;
-        };
-        if has_tmux_session(session)? {
-            live += 1;
-        }
+    pub(crate) fn filtered_tasks(&self, filter: TasksFilter) -> Vec<&TaskRecord> {
+        self.all_tasks
+            .iter()
+            .filter(|task| filter.matches(&task.state))
+            .collect()
     }
-    Ok(live)
 }
 
 fn count_by<F>(tasks: &[TaskRecord], mut key: F, limit: usize) -> Vec<(String, usize)>
@@ -148,8 +105,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AppConfig, BackendKind, FileConfig};
-    use crate::model::SubmitPayload;
+    use crate::config::{AppConfig, BackendKind, FileConfig, TaskRuntime};
+    use crate::model::{SubmitPayload, TaskMode};
     use std::path::PathBuf;
 
     fn task(id: &str, title: &str, state: TaskState, runtime: TaskRuntime) -> TaskRecord {
@@ -178,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_counts_visible_and_all_tasks_separately() {
+    fn dashboard_counts_all_tasks_and_filtered_views() {
         let all = vec![
             task("a", "alpha", TaskState::Running, TaskRuntime::Tui),
             task("b", "beta", TaskState::Succeeded, TaskRuntime::Mirrored),
@@ -186,29 +143,16 @@ mod tests {
         ];
         let dashboard = DashboardData {
             generated_at: Utc::now(),
-            scope: OverviewScope::NonTerminal,
-            visible_tasks: all
-                .iter()
-                .filter(|task| overview_scope_matches(&task.state, &OverviewScope::NonTerminal))
-                .cloned()
-                .collect(),
             all_tasks: all.clone(),
-            visible_summary: TaskSummary::from(
-                &all.iter()
-                    .filter(|task| overview_scope_matches(&task.state, &OverviewScope::NonTerminal))
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            ),
             all_summary: TaskSummary::from(&all),
-            visible_live_sessions: 0,
             repo_counts: count_by(&all, |task| task.repo.clone(), 5),
             runtime_counts: count_by(&all, |task| runtime_label(task).to_string(), 3),
         };
 
-        assert_eq!(dashboard.visible_summary.total, 2);
+        assert_eq!(dashboard.filtered_tasks(TasksFilter::Active).len(), 2);
+        assert_eq!(dashboard.filtered_tasks(TasksFilter::Terminal).len(), 1);
+        assert_eq!(dashboard.filtered_tasks(TasksFilter::All).len(), 3);
         assert_eq!(dashboard.all_summary.total, 3);
-        assert_eq!(dashboard.all_summary.succeeded, 1);
-        assert_eq!(dashboard.all_summary.running, 1);
         assert_eq!(dashboard.runtime_counts.len(), 3);
         assert_eq!(dashboard.repo_counts.len(), 1);
     }

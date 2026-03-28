@@ -1,6 +1,5 @@
 use crate::model::{TaskMode, TaskRecord, TaskState};
-use crate::overview_scope_label;
-use crate::overview_tui::{AppState, Tab};
+use crate::overview_tui::TasksFilter;
 use crate::overview_tui_data::DashboardData;
 use crate::panes_support::{runtime_label, task_state_label};
 use chrono::{DateTime, Utc};
@@ -17,44 +16,41 @@ const VIOLET: Color = Color::Rgb(191, 150, 255);
 const TEAL: Color = Color::Rgb(95, 241, 223);
 const METRIC_LABEL_WIDTH: usize = 13;
 
-pub(crate) fn status_spans(app: &AppState, data: &DashboardData) -> Vec<Span<'static>> {
-    let (label, selected, total, focused) = match app.tab {
-        Tab::Overview => (
-            "overview",
-            app.overview_selected,
-            data.visible_tasks.len(),
-            selected_task(Tab::Overview, app, data),
-        ),
-        Tab::Operational => (
-            "operational",
-            app.operational_selected,
-            data.all_tasks.len(),
-            selected_task(Tab::Operational, app, data),
-        ),
-        Tab::ClientAll => (
-            "client-all",
-            app.client_selected,
-            data.all_tasks.len(),
-            selected_task(Tab::ClientAll, app, data),
-        ),
-    };
-
-    let focus = focused
+pub(crate) fn status_spans(
+    filter: Option<TasksFilter>,
+    selected_index: usize,
+    selected_total: usize,
+    selected: Option<&TaskRecord>,
+    data: &DashboardData,
+) -> Vec<Span<'static>> {
+    let focus = selected
         .map(|task| truncate(&task.title, 30))
         .unwrap_or_else(|| "none".to_string());
-    let ordinal = if total == 0 {
-        0
-    } else {
-        selected.min(total - 1).saturating_add(1)
-    };
+    let mut spans = Vec::new();
 
-    vec![
-        Span::styled("scope ", Style::default().fg(MUTED)),
-        Span::styled(overview_scope_label(&data.scope), Style::default().fg(GOOD)),
-        Span::raw("  "),
-        Span::styled("refresh ", Style::default().fg(MUTED)),
-        Span::styled("2s", Style::default().fg(ACCENT)),
-        Span::raw("  "),
+    if let Some(filter) = filter {
+        let ordinal = if selected_total == 0 {
+            0
+        } else {
+            selected_index.min(selected_total - 1).saturating_add(1)
+        };
+        spans.extend([
+            Span::styled("filter ", Style::default().fg(MUTED)),
+            Span::styled(filter.label(), Style::default().fg(VIOLET)),
+            Span::raw("  "),
+            Span::styled("selected ", Style::default().fg(MUTED)),
+            Span::styled(
+                format!("{ordinal}/{selected_total} {focus}"),
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            ),
+        ]);
+    }
+
+    if !spans.is_empty() {
+        spans.push(Span::raw("  "));
+    }
+
+    spans.extend([
         Span::styled("total ", Style::default().fg(MUTED)),
         Span::styled(
             data.all_summary.total.to_string(),
@@ -67,27 +63,18 @@ pub(crate) fn status_spans(app: &AppState, data: &DashboardData) -> Vec<Span<'st
             Style::default().fg(GOOD),
         ),
         Span::raw("  "),
-        Span::styled("focus ", Style::default().fg(MUTED)),
-        Span::styled(
-            format!("{label} {ordinal}/{total} {focus}"),
-            Style::default().fg(VIOLET).add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  "),
         Span::styled("updated ", Style::default().fg(MUTED)),
         Span::styled(relative_time(data.generated_at), Style::default().fg(TEAL)),
-    ]
+    ]);
+
+    spans
 }
 
 pub(crate) fn selected_task<'a>(
-    tab: Tab,
-    app: &AppState,
-    data: &'a DashboardData,
+    tasks: &[&'a TaskRecord],
+    selected: usize,
 ) -> Option<&'a TaskRecord> {
-    match tab {
-        Tab::Overview => data.visible_tasks.get(app.overview_selected),
-        Tab::Operational => data.all_tasks.get(app.operational_selected),
-        Tab::ClientAll => data.all_tasks.get(app.client_selected),
-    }
+    tasks.get(selected).copied()
 }
 
 pub(crate) fn task_detail_lines(task: &TaskRecord) -> Vec<Line<'static>> {

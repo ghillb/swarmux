@@ -73,7 +73,8 @@ swarmux overview --tui
 
 Structured commands emit JSON by default. Use `--output text` when you want the pretty-printed human view. TUI commands ignore `--output`.
 
-`overview --tui` opens a tabbed dashboard with `Overview`, `Operational`, and `Client All`.
+`overview --tui` opens a two-tab dashboard: `Tasks` and `Stats`.
+Inside `Tasks`, press `f` to cycle `active -> terminal -> all`.
 
 tmux-friendly dispatch without JSON quoting:
 
@@ -156,7 +157,7 @@ bind-key D command-prompt -p "Task" "run-shell 'swarmux dispatch --connected --p
 
 Connected dispatch still appends `--prompt` as the trailing command argument for every runtime. Use `tui` there only with commands that naturally accept that trailing prompt input.
 
-`swarmux overview --tui` is the interactive overview dashboard.
+`swarmux overview --tui` is the interactive tasks dashboard.
 
 `swarmux panes switch` keeps the native tmux tree popup path. `swarmux panes switch --tui --pane-id "#{pane_id}"` opens the full-screen custom switcher. `swarmux panes switch --tui-sidebar --pane-id "#{pane_id}"` renders the sidebar TUI. `swarmux panes switch --launch-sidebar --pane-id "#{pane_id}"` is the tmux-side launcher that opens the split pane for that sidebar.
 
