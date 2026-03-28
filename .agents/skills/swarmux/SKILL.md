@@ -1,19 +1,37 @@
 ---
 name: swarmux
-description: Use this skill when you need tmux-first local task orchestration for coding agents - submit/start/delegate tasks, inspect logs/status, send input, reconcile crashed sessions, and prune finished auto worktrees. Prefer for multi-task local runs requiring machine-readable control and operator tmux visibility.
+description: Use this skill when you need tmux-first local task orchestration for coding agents - task submission, start, inspect, attach, wait, watch, reconcile, stop, and prune. Prefer for multi-task local runs requiring machine-readable control and operator tmux visibility.
 ---
 
 # Swarmux
 
 Use `swarmux` as the control plane for local coding tasks.
 
-Setup reference: `reference/setup.md`
+Setup reference: [`docs/getting-started.md`](docs/getting-started.md)
+
+## Primary interface
+
+Task management is the main interface.
+
+- `submit` creates a task record
+- `dispatch` submits and starts in one step
+- `start` launches a queued task
+- `list` shows tasks
+- `show` opens one task
+- `attach` enters a task session
+- `wait` blocks until a task reaches target states
+- `watch` streams task status and logs
+- `logs` prints stored logs
+- `set-ref` links tasks to PRs or issues
+- `reconcile` repairs crashed or lost sessions
+- `stop`, `done`, and `fail` change task lifecycle state
+- `prune` cleans up finished work
 
 ## When to use
 
 - User asks to run multiple coding tasks locally with tmux visibility.
-- User wants an agent control plane with JSON outputs (`submit`, `start`, `logs`, `show`, `list`).
-- User needs lifecycle control (`send`, `stop`, `done`, `fail`, `reconcile`, `prune`).
+- User wants an agent control plane with JSON outputs for task lifecycle commands.
+- User needs lifecycle control for running tasks, task recovery, or cleanup.
 - User needs backend-backed task state (`files` default, optional `beads` via `bd`).
 - User wants inspectable local execution instead of hidden/background orchestration.
 
@@ -35,10 +53,9 @@ Setup reference: `reference/setup.md`
 1. Run `swarmux doctor`.
 2. Run `swarmux init`.
 3. Inspect command shapes with `swarmux --output json schema`.
-4. Submit tasks with raw JSON payloads.
-5. Use `start` or `delegate` to launch work.
-6. Use `logs`, `show`, `list`, `popup`, and `reconcile` for supervision.
-7. Use `stop`, `done`, `fail`, and `prune` for explicit control.
+4. Submit or dispatch tasks with raw JSON payloads or tmux-friendly flags.
+5. Use `list`, `show`, `attach`, `wait`, and `watch` for supervision.
+6. Use `stop`, `done`, `fail`, `set-ref`, `reconcile`, and `prune` for explicit control.
 
 ## Safety
 

@@ -31,7 +31,7 @@ $ swarmux init
 $ swarmux submit --json '{...}'
 $ swarmux panes
 $ swarmux start &lt;id&gt;
-$ swarmux overview --once</code></pre>
+$ swarmux overview --tui</code></pre>
   </div>
 </div>
 

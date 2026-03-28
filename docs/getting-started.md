@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Get Started
-description: "Install and run swarmux with tmux overview supervision."
+description: "Install swarmux, wire tmux, and run the current task workflow."
 ---
 
 ## Requirements
@@ -11,43 +11,47 @@ description: "Install and run swarmux with tmux overview supervision."
 - POSIX shell at `/bin/sh`
 - optional: `bd` when using `SWARMUX_BACKEND=beads`
 
-## Install
+## Install prompt
 
-Primary release artifacts are GitHub release tarballs.
-Current supported platforms:
-
-- `x86_64-unknown-linux-gnu`
-- `aarch64-apple-darwin`
+Paste this into your coding agent:
 
 ```bash
-TARGET=x86_64-unknown-linux-gnu # or aarch64-apple-darwin
-curl -L "https://github.com/ghillb/swarmux/releases/latest/download/swarmux-${TARGET}.tar.xz" \
-  | tar -xJf - -C /tmp
-install -m 0755 "/tmp/swarmux" ~/.local/bin/swarmux
+bash -lc 'set -euo pipefail
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
+  Darwin-arm64) target=aarch64-apple-darwin ;;
+  *) echo "unsupported platform" >&2; exit 1 ;;
+esac
+bin_dir="$(IFS=:; for dir in $PATH; do [ -d "$dir" ] && [ -w "$dir" ] && { printf %s "$dir"; break; }; done)"
+: "${bin_dir:=$HOME/.local/bin}"
+mkdir -p "$bin_dir" "$HOME/.agents/skills/swarmux"
+curl -fsSL "https://github.com/ghillb/swarmux/releases/latest/download/swarmux-${target}.tar.xz" | tar -xJf - -C /tmp
+install -m 0755 /tmp/swarmux "$bin_dir/swarmux"
+curl -fsSL "https://github.com/ghillb/swarmux/raw/main/.agents/skills/swarmux/SKILL.md" -o "$HOME/.agents/skills/swarmux/SKILL.md"
+export PATH="$bin_dir:$PATH"
+swarmux --help >/dev/null'
 ```
 
-Install from source only for local development:
+This also installs the optional `swarmux` skill under `~/.agents/skills/swarmux` for agents that load global skills.
+
+## Tmux setup
+
+Copy these into `~/.config/tmux/tmux.conf`:
+
+```tmux
+bind-key T command-prompt -p "Task" "run-shell 'swarmux --human dispatch --connected --pane-id \"#{pane_id}\" --prompt \"%1\"'"
+bind -n C-M-Space run-shell "tmux display-popup -B -w 100% -h 100% -E \"sh -lc 'swarmux panes switch --tui --pane-id \\\"#{pane_id}\\\"'\""
+bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{pane_id}\""
+bind -n F8 display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux overview --tui'"
+```
+
+Reload tmux after editing:
 
 ```bash
-cargo install --path .
+tmux source-file ~/.config/tmux/tmux.conf
 ```
 
-If using the optional beads backend, ensure `bd` is available on `PATH`.
-
-If your agent runtime loads global skills from `~/.agents/skills`, place the
-official `swarmux` skill there:
-
-```bash
-mkdir -p ~/.agents/skills/swarmux
-curl -L \
-  "https://github.com/ghillb/swarmux/raw/main/.agents/skills/swarmux/SKILL.md" \
-  -o ~/.agents/skills/swarmux/SKILL.md
-```
-
-If your runtime uses a different global skills directory, place the same
-directory there instead.
-
-## Initialize and inspect schema
+## First run
 
 ```bash
 swarmux doctor
@@ -55,9 +59,19 @@ swarmux init
 swarmux schema
 ```
 
-Structured commands emit JSON by default. Add `--output text` for the pretty-printed human view. TUI commands ignore `--output`.
+Structured commands emit JSON by default. Use `--human` for compact task summaries. TUI commands ignore `--output`.
 
-## Submit and start a task
+## Spawn a task
+
+`prefix + T` opens the connected dispatch prompt in tmux.
+
+Equivalent CLI:
+
+```bash
+swarmux dispatch --connected --human --prompt "fix tests"
+```
+
+For explicit payloads, use `submit`:
 
 ```bash
 swarmux submit --json '{
@@ -69,154 +83,62 @@ swarmux submit --json '{
   "session": "swarmux-demo",
   "command": ["codex","exec","-m","gpt-5.3-codex","echo hi from task"]
 }'
-swarmux list
-swarmux start <id>
 ```
 
-## Dispatch a task from tmux-friendly flags
+## Inspect and steer
 
 ```bash
-swarmux dispatch \
-  --title "hello" \
-  --repo-ref demo \
-  --repo-root /path/to/repo \
-  -- codex exec -m gpt-5.3-codex "echo hi from task"
+swarmux overview --tui
+swarmux overview --once
+swarmux panes
 ```
 
-## Connected dispatch from the current tmux pane
+`overview --tui` has `Tasks` and `Stats`. Inside `Tasks`, `f` cycles `active -> terminal -> all`. `Enter` jumps to the task session. `x` stops an active task. `X` kills it.
 
-```bash
-swarmux dispatch \
-  --connected \
-  --mirrored \
-  --prompt "fix tests" \
-  -- codex exec
-```
+## Runtime choices
 
-To make the command prefix optional, add a config file:
+- `headless`: default detached runner
+- `mirrored`: visible CLI runner with output mirrored to logs
+- `tui`: full-screen interactive app in its own tmux session
+
+`tui` tasks still use the task session for execution. Use `swarmux attach <id>` when you want to enter one.
+
+## Optional config
+
+If you want a default connected command or named agents, add `~/.config/swarmux/config.toml`:
 
 ```toml
-# $XDG_CONFIG_HOME/swarmux/config.toml
 home = "/home/you/.local/state/swarmux"
-backend = "files" # or "beads"
+backend = "files"
 
 [connected]
 runtime = "mirrored"
-command = ["codex", "exec"]
-```
-
-Then connected dispatch can omit the command prefix:
-
-```bash
-swarmux dispatch --connected --human --prompt "fix tests"
-```
-
-Use `--human` when you want a compact summary instead of the JSON response.
-
-Manual TUI task:
-
-```bash
-swarmux submit --json '{
-  "title": "tui task",
-  "repo_ref": "demo",
-  "repo_root": "/path/to/repo",
-  "mode": "manual",
-  "runtime": "tui",
-  "worktree": "/path/to/repo",
-  "session": "swarmux-demo-tui",
-  "command": ["my-tui-agent", "fix tests"]
-}'
-swarmux start <id>
-swarmux attach <id>
-```
-
-You can also configure named agent runners:
-
-```toml
-# $XDG_CONFIG_HOME/swarmux/config.toml
-[connected]
-agent = "codex"
-runtime = "mirrored"
-
-[agents.codex]
 command = ["codex", "exec"]
 
 [agents.claude]
 command = ["claude", "-p"]
 ```
 
-Then dispatch can target a specific configured agent:
+## Task management
 
-```bash
-swarmux dispatch --connected --agent claude --prompt "summarize diff"
-```
+These are the main task lifecycle commands:
 
-Runtime choices:
+- `swarmux submit` creates a task record
+- `swarmux dispatch` submits and starts in one step
+- `swarmux start <id>` launches a queued task
+- `swarmux list` shows tasks
+- `swarmux show <id>` opens one task
+- `swarmux attach <id>` enters the task session
 
-```text
-headless  logs-first detached runner
-mirrored  visible task session with pane output mirrored into logs
-tui       full-screen interactive app in its own tmux session
-```
+Use these for control and recovery:
 
-`headless` stays the default when no runtime override is configured.
-`mirrored` is for visible non-TUI CLI runners.
-`tui` is for full-screen interactive programs started in detached tmux task sessions; use `swarmux attach <id>` when you want to enter them.
-
-Connected dispatch still appends `--prompt` as the trailing command argument for every runtime, including `tui`. Use `tui` there only with commands that support that calling convention.
-
-## tmux popup mapping
-
-Use this mapping to open the tasks dashboard in a borderless full-screen popup:
-
-```tmux
-bind -n <key> display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux overview --tui'"
-```
-
-Use left/right to switch between the `Tasks` and `Stats` tabs. Inside `Tasks`, press `f` to cycle `active -> terminal -> all`.
-
-Reload tmux:
-
-```bash
-tmux source-file ~/.config/tmux/tmux.conf
-```
-
-`overview` filters rendered rows with `--scope terminal|non-terminal|all`. The default is `non-terminal`, which maps to the `active` TUI filter.
-Use `swarmux overview --tui` for the interactive tasks dashboard and `swarmux overview --once` for a snapshot.
-Use `swarmux panes` for a live pane snapshot and `swarmux panes sync-tmux-meta` before opening tmux `choose-tree`.
-The pane switcher reads its session ignore list from `[tmux].session_ignore` in `~/.config/swarmux/config.toml`; leave it unset to show all sessions. The custom switchers also have per-mode current-session filters:
-
-- `[ui].pane_switcher_current_session_only` for `--tui`
-- `[ui].pane_switcher_sidebar_current_session_only` for `--tui-sidebar`
-
-Press `s` inside either custom switcher to toggle that filter at runtime.
-
-Use tmux itself for the prompt UI and keep `swarmux` non-interactive:
-
-```tmux
-bind-key D command-prompt -p "Task" "run-shell 'swarmux dispatch --connected --pane-id \"#{pane_id}\" --agent codex --prompt \"%1\"'"
-bind-key N run-shell -b 'swarmux notify --tmux >/dev/null 2>&1'
-```
-
-Pane-first tree popup:
-
-```tmux
-bind -n C-M-Space run-shell "swarmux panes switch"
-```
-
-Native tmux tree stays on `swarmux panes switch`. For the async custom switcher, launch the full-screen TUI in a popup and pass the source pane id through:
-
-```tmux
-bind -n C-M-Space display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux panes switch --tui --pane-id \"#{pane_id}\"'"
-```
-
-For the sidebar variant, use the Rust launcher and let the sidebar TUI close its split automatically:
-
-```tmux
-bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{pane_id}\""
-```
-
-`swarmux` starts and attaches sessions, but it does not manage popup or window layout for TUI tasks. `--tui-sidebar` is the actual sidebar UI; `--launch-sidebar` is only the tmux-side launcher.
+- `swarmux wait <id>` blocks until a task reaches a target state
+- `swarmux watch <id>` streams task status and logs
+- `swarmux logs <id> --raw` prints the stored log
+- `swarmux set-ref <id> <url>` links task and PR or issue
+- `swarmux reconcile` repairs state after exits or session loss
+- `swarmux notify --tmux` sends a tmux message
+- `swarmux prune --apply` removes finished managed worktrees and sessions
 
 Task-scoped wait and watch:
 
@@ -237,17 +159,4 @@ Task logs are timestamped in UTC:
 ```text
 2026-03-14T10:22:31Z spawned swx-swarmux-4rh
 2026-03-14T10:22:35Z current time is 23:14:05
-```
-
-## Operator commands
-
-```bash
-swarmux show <id>
-swarmux logs <id> --raw
-swarmux wait <id> --states succeeded,failed
-swarmux watch <id> --lines 40
-swarmux set-ref <id> "https://github.com/owner/repo/pull/123"
-swarmux reconcile
-swarmux notify --tmux
-swarmux prune --apply
 ```
