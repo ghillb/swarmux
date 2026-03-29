@@ -1,4 +1,4 @@
-use crate::cli::{OutputFormat, PanesArgs, PanesCommand};
+use crate::cli::{JumpArgs, OutputFormat, PanesArgs, PanesCommand};
 use crate::emit;
 use crate::model::TaskRecord;
 use crate::panes_support::{
@@ -77,6 +77,16 @@ struct PaneSwitchResponse {
     updated: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct PaneJumpResponse {
+    ok: bool,
+    index: usize,
+    pane_id: String,
+    session_name: String,
+    window_id: String,
+    task_id: Option<String>,
+}
+
 const SWARMUX_TREE_FORMAT: &str =
     "#{?pane_format,#{@swx_row},#{?window_format,#{window_index}:#{window_name},#{session_name}}}";
 const SWARMUX_TREE_TEMPLATE: &str = r##"sh -lc 'target="$1"; pane_id="$(tmux display-message -p -t "$target" "#{pane_id}" 2>/dev/null || true)"; if [ -z "$pane_id" ]; then exit 0; fi; session_name="$(tmux display-message -p -t "$target" "#{session_name}")"; window_id="$(tmux display-message -p -t "$target" "#{window_id}")"; tmux switch-client -t "$session_name"; tmux select-window -t "$window_id"; tmux select-pane -t "$pane_id"' sh '%%'"##;
@@ -103,6 +113,7 @@ pub fn run(store: &Store, output: OutputFormat, args: PanesArgs) -> Result<()> {
 
             switch(store, output)
         }
+        Some(PanesCommand::Jump(args)) => jump(store, output, args),
         None => {
             let response = list_panes(store)?;
             emit(&output, &response)
@@ -228,6 +239,32 @@ fn switch(store: &Store, output: OutputFormat) -> Result<()> {
     Ok(())
 }
 
+fn jump(store: &Store, output: OutputFormat, args: JumpArgs) -> Result<()> {
+    ensure_tmux_client("panes jump")?;
+    if !(1..=9).contains(&args.index) {
+        return Err(anyhow!("--index must be between 1 and 9"));
+    }
+    let panes = build_panes(store)?;
+    let target = panes
+        .into_iter()
+        .filter(|pane| pane.managed_by_swarmux)
+        .nth(args.index.saturating_sub(1))
+        .ok_or_else(|| anyhow!("no managed pane at index {}", args.index))?;
+
+    focus_pane(&target)?;
+    emit(
+        &output,
+        &PaneJumpResponse {
+            ok: true,
+            index: args.index,
+            pane_id: target.pane_id,
+            session_name: target.session_name,
+            window_id: target.window_id,
+            task_id: target.task.as_ref().map(|task| task.id.clone()),
+        },
+    )
+}
+
 fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
     let context = runtime::current_pane_context(source_pane_id)?;
     let binary = std::env::current_exe().context("failed to resolve swarmux binary")?;
@@ -276,6 +313,41 @@ fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
 
     if !status.success() {
         return Err(anyhow!("tmux failed to label the sidebar pane"));
+    }
+
+    Ok(())
+}
+
+fn ensure_tmux_client(command_name: &str) -> Result<()> {
+    if std::env::var_os("TMUX").is_none() {
+        return Err(anyhow!("{command_name} requires running inside tmux"));
+    }
+    Ok(())
+}
+
+fn focus_pane(pane: &PaneSnapshot) -> Result<()> {
+    run_tmux_status(
+        ["switch-client", "-t", pane.session_name.as_str()],
+        "tmux failed to switch client",
+    )?;
+    run_tmux_status(
+        ["select-window", "-t", pane.window_id.as_str()],
+        "tmux failed to select window",
+    )?;
+    run_tmux_status(
+        ["select-pane", "-t", pane.pane_id.as_str()],
+        "tmux failed to select pane",
+    )
+}
+
+fn run_tmux_status<const N: usize>(args: [&str; N], error_message: &str) -> Result<()> {
+    let status = tmux_command()
+        .args(args)
+        .status()
+        .context("failed to run tmux")?;
+
+    if !status.success() {
+        return Err(anyhow!("{}", error_message));
     }
 
     Ok(())

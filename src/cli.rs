@@ -258,6 +258,7 @@ pub struct PanesArgs {
 pub enum PanesCommand {
     SyncTmuxMeta,
     Switch(SwitchArgs),
+    Jump(JumpArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -273,6 +274,12 @@ pub struct SwitchArgs {
 
     #[arg(long)]
     pub pane_id: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct JumpArgs {
+    #[arg(long)]
+    pub index: usize,
 }
 
 #[derive(Debug, clap::Args)]

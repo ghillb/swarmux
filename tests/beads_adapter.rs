@@ -69,6 +69,7 @@ fn beads_backend_supports_doctor_init_submit_show_and_done() {
     harness
         .run(&["doctor"])
         .success()
+        .stdout(predicate::str::contains("\"name\":\"tmux>=3.7\""))
         .stdout(predicate::str::contains("\"name\":\"backend=beads\""))
         .stdout(predicate::str::contains("\"ok\":true"));
 
@@ -217,6 +218,7 @@ fn config_file_can_select_beads_backend() {
     harness
         .run_with_config_backend(&["doctor"])
         .success()
+        .stdout(predicate::str::contains("\"name\":\"tmux>=3.7\""))
         .stdout(predicate::str::contains("\"name\":\"backend=beads\""))
         .stdout(predicate::str::contains("\"ok\":true"));
 }
@@ -340,6 +342,9 @@ session_file() {{
 case "$cmd" in
   --help)
     printf 'tmux fake\n'
+    ;;
+  -V)
+    printf 'tmux 3.7\n'
     ;;
   has-session)
     if [ "${{1:-}}" = "-t" ] && [ -f "$(session_file "$2")" ]; then

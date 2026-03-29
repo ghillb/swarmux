@@ -29,9 +29,10 @@ hide_title: true
     </div>
     <pre><code>$ swarmux doctor
 $ swarmux init
-$ swarmux submit --json '{...}'
-$ swarmux panes
-$ swarmux start &lt;id&gt;
+$ tmux source-file ~/.config/tmux/tmux.conf
+$ ~/.tmux/plugins/tpm/bin/install_plugins
+$ swarmux dispatch --connected --human --prompt "fix tests"
+$ swarmux panes jump --index 1
 $ swarmux overview --tui</code></pre>
   </div>
 </div>
@@ -43,6 +44,7 @@ $ swarmux overview --tui</code></pre>
 ## Why swarmux
 
 - swarmux extends tmux instead of introducing a separate orchestration runtime.
+- TPM plugin bindings are the canonical tmux integration path.
 - Run each task in its own tmux session and git worktree, with direct operator visibility.
 - Keep agent automation scriptable via JSON output by default.
 - Add task-aware TUIs and agent-agnostic task management around the existing tmux workflow.

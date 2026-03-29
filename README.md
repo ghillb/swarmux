@@ -7,6 +7,7 @@ Agent-native Rust CLI for tmux-based orchestration of local coding tasks.
 ## Requirements
 
 - `tmux`
+- `tmux` 3.7 or newer
 - `git`
 - a POSIX shell at `/bin/sh`
 - optional: `bd` when `SWARMUX_BACKEND=beads`
@@ -32,12 +33,23 @@ swarmux submit --json '{
 }'
 swarmux list
 swarmux panes
+swarmux panes jump --index 1
 swarmux overview --once
 swarmux overview --once --scope all
 swarmux overview --tui
 ```
 
 Structured commands emit JSON by default. Use `--output text` when you want the pretty-printed human view. TUI commands ignore `--output`.
+
+The tmux plugin at [`swarmux.tmux`](./swarmux.tmux) is bindings-only. Install the `swarmux` binary first, then let TPM source the bindings from this repo.
+
+TPM is the canonical tmux setup path. The plugin exposes tmux-managed bindings through:
+
+- `@swarmux-dispatch-key`
+- `@swarmux-pane-switch-key`
+- `@swarmux-sidebar-key`
+- `@swarmux-overview-key`
+- `@swarmux-index-keys`
 
 `overview --tui` opens a two-tab dashboard: `Tasks` and `Stats`.
 Inside `Tasks`, press `f` to cycle `active -> terminal -> all`.

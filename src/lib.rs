@@ -425,9 +425,11 @@ pub(crate) fn stop_task(
 }
 
 fn run_doctor(store: &Store, output: OutputFormat) -> Result<()> {
+    let tmux_available = command_available("tmux");
     let mut checks = vec![
         ("git", command_available("git")),
-        ("tmux", command_available("tmux")),
+        ("tmux", tmux_available),
+        ("tmux>=3.7", tmux_available && tmux_version_at_least(3, 7)),
     ];
     match store.paths().backend {
         config::BackendKind::Files => checks.push(("backend=files", true)),
@@ -1318,6 +1320,37 @@ fn command_available(name: &str) -> bool {
         .arg("--help")
         .output()
         .is_ok()
+}
+
+fn tmux_version_at_least(required_major: u64, required_minor: u64) -> bool {
+    let output = match std::process::Command::new("tmux").arg("-V").output() {
+        Ok(output) if output.status.success() => output,
+        _ => return false,
+    };
+
+    let version = String::from_utf8_lossy(&output.stdout);
+    let raw = match version.split_whitespace().nth(1) {
+        Some(raw) => raw,
+        None => return false,
+    };
+
+    let mut parts = raw.split('.');
+    let major = parts.next().and_then(|part| {
+        part.chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u64>()
+            .ok()
+    });
+    let minor = parts.next().and_then(|part| {
+        part.chars()
+            .take_while(|ch| ch.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u64>()
+            .ok()
+    });
+
+    matches!((major, minor), (Some(major), Some(minor)) if (major, minor) >= (required_major, required_minor))
 }
 
 fn project_payload(value: Value, fields: Option<&str>) -> Result<Value> {

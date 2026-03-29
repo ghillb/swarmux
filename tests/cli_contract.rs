@@ -13,6 +13,7 @@ fn schema_is_available_as_machine_readable_json() {
         .stdout(predicate::str::contains("\"submit\""))
         .stdout(predicate::str::contains("\"panes\""))
         .stdout(predicate::str::contains("\"switch\""))
+        .stdout(predicate::str::contains("\"jump\""))
         .stdout(predicate::str::contains("\"notify\""))
         .stdout(predicate::str::contains("\"wait\""))
         .stdout(predicate::str::contains("\"watch\""))
@@ -68,6 +69,16 @@ fn panes_switch_help_exposes_tui_mode() {
         .stdout(predicate::str::contains("--tui-sidebar"))
         .stdout(predicate::str::contains("--launch-sidebar"))
         .stdout(predicate::str::contains("--pane-id"));
+}
+
+#[test]
+fn panes_jump_help_exposes_index_flag() {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swarmux"));
+    command.args(["panes", "jump", "--help"]);
+    command
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--index <INDEX>"));
 }
 
 #[test]

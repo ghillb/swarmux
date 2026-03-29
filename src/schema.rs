@@ -41,6 +41,11 @@ pub fn schema_json() -> Value {
                         "json_input": false,
                         "mutating": true,
                         "supports_tui": true
+                    },
+                    {
+                        "name": "jump",
+                        "json_input": false,
+                        "mutating": true
                     }
                 ]
             },

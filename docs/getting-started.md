@@ -7,6 +7,7 @@ description: "Install swarmux, wire tmux, and run the current task workflow."
 ## Requirements
 
 - `tmux`
+- `tmux` 3.7 or newer
 - `git`
 - POSIX shell at `/bin/sh`
 - optional: `bd` when using `SWARMUX_BACKEND=beads`
@@ -36,20 +37,46 @@ This also installs the optional `swarmux` skill under `~/.agents/skills/swarmux`
 
 ## Tmux setup
 
-Copy these into `~/.config/tmux/tmux.conf`:
+Install TPM if you do not have it yet:
 
-```tmux
-bind-key T command-prompt -p "Task" "run-shell 'swarmux --human dispatch --connected --pane-id \"#{pane_id}\" --prompt \"%1\"'"
-bind -n C-M-Space run-shell "tmux display-popup -B -w 100% -h 100% -E \"sh -lc 'swarmux panes switch --tui --pane-id \\\"#{pane_id}\\\"'\""
-bind -n C-M-u run-shell -b "swarmux panes switch --launch-sidebar --pane-id \"#{pane_id}\""
-bind -n F8 display-popup -B -w 100% -h 100% -E "sh -lc 'swarmux overview --tui'"
+```bash
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 ```
 
-Reload tmux after editing:
+Add this to `~/.config/tmux/tmux.conf`:
+
+```tmux
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'ghillb/swarmux'
+set -g @swarmux-dispatch-key 'T'
+set -g @swarmux-pane-switch-key 'C-M-Space'
+set -g @swarmux-sidebar-key 'M-s'
+set -g @swarmux-overview-key 'F8'
+set -g @swarmux-index-keys 'M-1 M-2 M-3 M-4 M-5 M-6 M-7 M-8 M-9'
+# Optional when swarmux is not already on PATH:
+# set -g @swarmux-bin '/absolute/path/to/swarmux'
+
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+Reload tmux, then install plugins:
 
 ```bash
 tmux source-file ~/.config/tmux/tmux.conf
+~/.tmux/plugins/tpm/bin/install_plugins
 ```
+
+The plugin only installs bindings. It does not install or upgrade the `swarmux` binary.
+
+Default bindings:
+
+- `prefix + T`: connected dispatch prompt for the current pane
+- `C-M-Space`: pane switcher popup
+- `M-s`: sidebar
+- `F8`: overview popup
+- `M-1` through `M-9`: jump to managed panes by index
+
+Set any of the `@swarmux-*-key` values to an empty string if you want to disable that binding.
 
 ## First run
 
@@ -91,9 +118,12 @@ swarmux submit --json '{
 swarmux overview --tui
 swarmux overview --once
 swarmux panes
+swarmux panes jump --index 1
 ```
 
 `overview --tui` has `Tasks` and `Stats`. Inside `Tasks`, `f` cycles `active -> terminal -> all`. `Enter` jumps to the task session. `x` stops an active task. `X` kills it.
+
+`M-1` through `M-9` use `swarmux panes jump --index <n>` under the hood, targeting the first nine managed panes in `swarmux panes` order.
 
 ## Runtime choices
 
