@@ -2,8 +2,9 @@ use crate::cli::{JumpArgs, OutputFormat, PanesArgs, PanesCommand};
 use crate::emit;
 use crate::model::TaskRecord;
 use crate::panes_support::{
-    bool_flag, build_label, git_info, list_tasks, list_tmux_panes, pane_counts, pane_row,
-    pane_sort_key, runtime_label, set_pane_option, task_state_label, tmux_command,
+    bool_flag, build_label, current_tmux_session_name, git_info, list_tasks, list_tmux_panes,
+    pane_counts, pane_row, pane_sort_key, runtime_label, set_pane_option, task_state_label,
+    tmux_command,
 };
 use crate::runtime;
 use crate::store::Store;
@@ -84,6 +85,16 @@ struct PaneJumpResponse {
     pane_id: String,
     session_name: String,
     window_id: String,
+    task_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct JumpTarget {
+    pane_id: String,
+    session_name: String,
+    window_id: String,
+    window_index: i64,
+    pane_index: i64,
     task_id: Option<String>,
 }
 
@@ -244,14 +255,17 @@ fn jump(store: &Store, output: OutputFormat, args: JumpArgs) -> Result<()> {
     if !(1..=9).contains(&args.index) {
         return Err(anyhow!("--index must be between 1 and 9"));
     }
-    let panes = build_panes(store)?;
-    let target = panes
+    let target = list_jump_targets(store)?
         .into_iter()
-        .filter(|pane| pane.managed_by_swarmux)
+        .filter(|pane| args.exclude_pane_id.as_deref() != Some(pane.pane_id.as_str()))
         .nth(args.index.saturating_sub(1))
-        .ok_or_else(|| anyhow!("no managed pane at index {}", args.index))?;
+        .ok_or_else(|| anyhow!("no pane at index {}", args.index))?;
 
-    focus_pane(&target)?;
+    focus_tmux_pane(
+        target.session_name.as_str(),
+        target.window_id.as_str(),
+        target.pane_id.as_str(),
+    )?;
     emit(
         &output,
         &PaneJumpResponse {
@@ -260,9 +274,57 @@ fn jump(store: &Store, output: OutputFormat, args: JumpArgs) -> Result<()> {
             pane_id: target.pane_id,
             session_name: target.session_name,
             window_id: target.window_id,
-            task_id: target.task.as_ref().map(|task| task.id.clone()),
+            task_id: target.task_id,
         },
     )
+}
+
+fn list_jump_targets(store: &Store) -> Result<Vec<JumpTarget>> {
+    let tasks_by_session = list_tasks(store)?
+        .into_iter()
+        .filter_map(|task| task.session.map(|session| (session, task.id)))
+        .collect::<BTreeMap<_, _>>();
+    let current_session_only = store
+        .paths()
+        .settings
+        .ui
+        .pane_switcher_sidebar_current_session_only;
+    let current_session_name = current_tmux_session_name()?;
+    let filter = store.paths().settings.tmux.ignore_filter();
+
+    let mut panes = list_tmux_panes(Some(filter.as_str()))?
+        .into_iter()
+        .filter(|pane| {
+            !current_session_only
+                || current_session_name
+                    .as_deref()
+                    .is_none_or(|session_name| pane.session_name == session_name)
+        })
+        .map(|pane| JumpTarget {
+            task_id: tasks_by_session.get(&pane.session_name).cloned(),
+            pane_id: pane.pane_id,
+            session_name: pane.session_name,
+            window_id: pane.window_id,
+            window_index: pane.window_index,
+            pane_index: pane.pane_index,
+        })
+        .collect::<Vec<_>>();
+
+    panes.sort_by(|left, right| {
+        (
+            left.session_name.as_str(),
+            left.window_index,
+            left.pane_index,
+            left.pane_id.as_str(),
+        )
+            .cmp(&(
+                right.session_name.as_str(),
+                right.window_index,
+                right.pane_index,
+                right.pane_id.as_str(),
+            ))
+    });
+    Ok(panes)
 }
 
 fn launch_sidebar(source_pane_id: Option<&str>) -> Result<()> {
@@ -325,19 +387,16 @@ fn ensure_tmux_client(command_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn focus_pane(pane: &PaneSnapshot) -> Result<()> {
+fn focus_tmux_pane(session_name: &str, window_id: &str, pane_id: &str) -> Result<()> {
     run_tmux_status(
-        ["switch-client", "-t", pane.session_name.as_str()],
+        ["switch-client", "-t", session_name],
         "tmux failed to switch client",
     )?;
     run_tmux_status(
-        ["select-window", "-t", pane.window_id.as_str()],
+        ["select-window", "-t", window_id],
         "tmux failed to select window",
     )?;
-    run_tmux_status(
-        ["select-pane", "-t", pane.pane_id.as_str()],
-        "tmux failed to select pane",
-    )
+    run_tmux_status(["select-pane", "-t", pane_id], "tmux failed to select pane")
 }
 
 fn run_tmux_status<const N: usize>(args: [&str; N], error_message: &str) -> Result<()> {

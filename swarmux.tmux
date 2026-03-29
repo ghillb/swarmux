@@ -39,6 +39,6 @@ bind_root_if_set "$OVERVIEW_KEY" "run-shell \"bash \\\"$SCRIPTS_DIR/overview.sh\
 index=1
 for key in $INDEX_KEYS; do
   [ "$index" -le 9 ] || break
-  bind_root_if_set "$key" "run-shell \"bash \\\"$SCRIPTS_DIR/jump-index.sh\\\" \\\"$index\\\"\""
+  bind_root_if_set "$key" "run-shell -F \"bash \\\"$SCRIPTS_DIR/jump-index.sh\\\" \\\"$index\\\" \\\"#{pane_id}\\\"\""
   index=$((index + 1))
 done

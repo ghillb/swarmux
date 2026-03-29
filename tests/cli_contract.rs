@@ -78,7 +78,10 @@ fn panes_jump_help_exposes_index_flag() {
     command
         .assert()
         .success()
-        .stdout(predicate::str::contains("--index <INDEX>"));
+        .stdout(predicate::str::contains("--index <INDEX>"))
+        .stdout(predicate::str::contains(
+            "--exclude-pane-id <EXCLUDE_PANE_ID>",
+        ));
 }
 
 #[test]

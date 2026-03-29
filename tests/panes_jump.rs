@@ -22,6 +22,8 @@ impl Harness {
         fs::write(fake_root.path().join("git-diff.txt"), "").unwrap();
         fs::write(fake_root.path().join("git-cached.txt"), "").unwrap();
         fs::write(fake_root.path().join("git-branch.txt"), "main\n").unwrap();
+        fs::write(fake_root.path().join("git.log"), "").unwrap();
+        fs::write(fake_root.path().join("current-session.txt"), "current\n").unwrap();
         fs::create_dir_all(fake_root.path().join("repo").join(".git-fake-branches")).unwrap();
         write_fake_tmux(bin.path().join("tmux"), fake_root.path());
         write_fake_git(bin.path().join("git"), fake_root.path());
@@ -65,10 +67,57 @@ impl Harness {
         command.args(args);
         command.assert()
     }
+
+    fn write_config(&self, raw: &str) {
+        let config_dir = self.home.path().join("config-home").join("swarmux");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("config.toml"), raw).unwrap();
+    }
 }
 
 #[test]
-fn panes_jump_focuses_managed_pane_by_index() {
+fn panes_jump_focuses_any_pane_by_index() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "other\t@9\t9\tother\t%99\t1\t0\t0\t{}\tbash\tother\nswarmux-pane-2\t@2\t2\twork\t%22\t1\t1\t0\t{}\tcodex\tsecond\n",
+            harness.fake_root.path().join("repo").display(),
+            harness.fake_root.path().join("repo").display()
+        ),
+    )
+    .unwrap();
+
+    let jumped = harness
+        .run_in_tmux(&["--output", "json", "panes", "jump", "--index", "1"])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let jumped: Value = serde_json::from_slice(&jumped).unwrap();
+
+    assert_eq!(jumped["ok"], true);
+    assert_eq!(jumped["index"], 1);
+    assert_eq!(jumped["pane_id"], "%99");
+    assert_eq!(jumped["session_name"], "other");
+    assert_eq!(jumped["task_id"], Value::Null);
+
+    let tmux_log = fs::read_to_string(harness.fake_root.path().join("tmux.log")).unwrap();
+    assert!(tmux_log.contains("switch-client -t other"));
+    assert!(tmux_log.contains("select-window -t @9"));
+    assert!(tmux_log.contains("select-pane -t %99"));
+
+    let git_log = fs::read_to_string(harness.fake_root.path().join("git.log")).unwrap();
+    assert!(
+        git_log.trim().is_empty(),
+        "panes jump should not invoke git"
+    );
+}
+
+#[test]
+fn panes_jump_keeps_task_id_for_managed_pane() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
 
@@ -102,7 +151,67 @@ fn panes_jump_focuses_managed_pane_by_index() {
     fs::write(
         harness.fake_root.path().join("panes.tsv"),
         format!(
-            "other\t@9\t9\tother\t%99\t1\t0\t0\t/tmp/other\tbash\tother\nswarmux-pane-2\t@2\t2\twork\t%22\t1\t1\t0\t{}\tcodex\tsecond\nswarmux-pane-1\t@1\t1\twork\t%11\t1\t1\t0\t{}\tcodex\tfirst\n",
+            "other\t@9\t9\tother\t%99\t1\t0\t0\t{}\tbash\tother\nswarmux-pane-2\t@2\t2\twork\t%22\t1\t1\t0\t{}\tcodex\tsecond\nswarmux-pane-1\t@1\t1\twork\t%11\t1\t1\t0\t{}\tcodex\tfirst\n",
+            harness.fake_root.path().join("repo").display(),
+            harness.fake_root.path().join("repo").display(),
+            harness.fake_root.path().join("repo").display()
+        ),
+    )
+    .unwrap();
+
+    let jumped = harness
+        .run_in_tmux(&["--output", "json", "panes", "jump", "--index", "3"])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let jumped: Value = serde_json::from_slice(&jumped).unwrap();
+
+    assert_eq!(jumped["ok"], true);
+    assert_eq!(jumped["index"], 3);
+    assert_eq!(jumped["pane_id"], "%22");
+    assert_eq!(jumped["session_name"], "swarmux-pane-2");
+    assert_eq!(jumped["task_id"], second["id"]);
+    assert_ne!(jumped["task_id"], first["id"]);
+}
+
+#[test]
+fn panes_jump_rejects_missing_slot_after_counting_all_panes() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "other\t@9\t9\tother\t%99\t1\t0\t0\t{}\tbash\tother\nswarmux-pane-1\t@1\t1\twork\t%11\t1\t1\t0\t{}\tcodex\tfirst\n",
+            harness.fake_root.path().join("repo").display(),
+            harness.fake_root.path().join("repo").display()
+        ),
+    )
+    .unwrap();
+
+    harness
+        .run_in_tmux(&["panes", "jump", "--index", "3"])
+        .failure()
+        .stderr(predicate::str::contains("no pane at index 3"));
+}
+
+#[test]
+fn panes_jump_matches_sidebar_current_session_filter() {
+    let harness = Harness::new();
+    harness.run(&["init"]).success();
+    harness.write_config("[ui]\npane_switcher_sidebar_current_session_only = true\n");
+
+    fs::write(
+        harness.fake_root.path().join("current-session.txt"),
+        "current\n",
+    )
+    .unwrap();
+    fs::write(
+        harness.fake_root.path().join("panes.tsv"),
+        format!(
+            "other\t@9\t9\tother\t%99\t1\t0\t0\t{}\tbash\tother\ncurrent\t@1\t1\twork\t%11\t1\t1\t0\t{}\tbash\tfirst\ncurrent\t@2\t2\twork\t%22\t1\t1\t0\t{}\tbash\tsecond\n",
+            harness.fake_root.path().join("repo").display(),
             harness.fake_root.path().join("repo").display(),
             harness.fake_root.path().join("repo").display()
         ),
@@ -117,52 +226,50 @@ fn panes_jump_focuses_managed_pane_by_index() {
         .clone();
     let jumped: Value = serde_json::from_slice(&jumped).unwrap();
 
-    assert_eq!(jumped["ok"], true);
-    assert_eq!(jumped["index"], 2);
     assert_eq!(jumped["pane_id"], "%22");
-    assert_eq!(jumped["session_name"], "swarmux-pane-2");
-    assert_eq!(jumped["task_id"], second["id"]);
-    assert_ne!(jumped["task_id"], first["id"]);
-
-    let tmux_log = fs::read_to_string(harness.fake_root.path().join("tmux.log")).unwrap();
-    assert!(tmux_log.contains("switch-client -t swarmux-pane-2"));
-    assert!(tmux_log.contains("select-window -t @2"));
-    assert!(tmux_log.contains("select-pane -t %22"));
+    assert_eq!(jumped["session_name"], "current");
 }
 
 #[test]
-fn panes_jump_rejects_missing_slot_after_ignoring_unmanaged_panes() {
+fn panes_jump_can_exclude_sidebar_pane_from_indexing() {
     let harness = Harness::new();
     harness.run(&["init"]).success();
-
-    let payload = format!(
-        "{{\"title\":\"Managed pane\",\"repo_ref\":\"core\",\"repo_root\":\"{}\",\"mode\":\"manual\",\"worktree\":\"{}\",\"session\":\"swarmux-pane-1\",\"command\":[\"echo\",\"one\"]}}",
-        harness.fake_root.path().join("repo").display(),
-        harness.fake_root.path().join("repo").display()
-    );
-
-    harness
-        .run(&["--output", "json", "submit", "--json", &payload])
-        .success();
 
     fs::write(
         harness.fake_root.path().join("panes.tsv"),
         format!(
-            "swarmux-pane-1\t@1\t1\twork\t%11\t1\t1\t0\t{}\tcodex\tfirst\nother\t@9\t9\tother\t%99\t1\t0\t0\t/tmp/other\tbash\tother\n",
+            "current\t@1\t1\tsidebar\t%10\t1\t1\t0\t{}\tswarmux\tsidebar\ncurrent\t@2\t2\twork\t%11\t1\t1\t0\t{}\tbash\tfirst\ncurrent\t@3\t3\twork\t%12\t1\t1\t0\t{}\tbash\tsecond\n",
+            harness.fake_root.path().join("repo").display(),
+            harness.fake_root.path().join("repo").display(),
             harness.fake_root.path().join("repo").display()
         ),
     )
     .unwrap();
 
-    harness
-        .run_in_tmux(&["panes", "jump", "--index", "2"])
-        .failure()
-        .stderr(predicate::str::contains("no managed pane at index 2"));
+    let jumped = harness
+        .run_in_tmux(&[
+            "--output",
+            "json",
+            "panes",
+            "jump",
+            "--index",
+            "2",
+            "--exclude-pane-id",
+            "%10",
+        ])
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let jumped: Value = serde_json::from_slice(&jumped).unwrap();
+
+    assert_eq!(jumped["pane_id"], "%12");
+    assert_eq!(jumped["session_name"], "current");
 }
 
 fn write_fake_tmux(path: PathBuf, root: &Path) {
     let script = format!(
-        r#"#!/usr/bin/env bash
+        r##"#!/usr/bin/env bash
 set -euo pipefail
 root="{root}"
 cmd="${{1:-}}"
@@ -179,6 +286,14 @@ case "$cmd" in
   list-panes)
     cat "$root/panes.tsv"
     ;;
+  display-message)
+    if [ "${{1:-}}" = "-p" ] && [ "${{2:-}}" = "#{{session_name}}" ]; then
+      cat "$root/current-session.txt"
+      exit 0
+    fi
+    echo "unexpected display-message args: $*" >&2
+    exit 1
+    ;;
   switch-client|select-window|select-pane|set-option)
     exit 0
     ;;
@@ -187,7 +302,7 @@ case "$cmd" in
     exit 1
     ;;
 esac
-"#,
+"##,
         root = root.display()
     );
 
@@ -206,6 +321,7 @@ fn write_fake_git(path: PathBuf, root: &Path) {
         r#"#!/usr/bin/env bash
 set -euo pipefail
 root="{root}"
+printf '%s\n' "$*" >> "$root/git.log"
 
 repo_root=""
 if [ "${{1:-}}" = "-C" ]; then

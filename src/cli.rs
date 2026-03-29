@@ -280,6 +280,9 @@ pub struct SwitchArgs {
 pub struct JumpArgs {
     #[arg(long)]
     pub index: usize,
+
+    #[arg(long)]
+    pub exclude_pane_id: Option<String>,
 }
 
 #[derive(Debug, clap::Args)]

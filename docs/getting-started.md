@@ -74,7 +74,7 @@ Default bindings:
 - `C-M-Space`: pane switcher popup
 - `M-s`: sidebar
 - `F8`: overview popup
-- `M-1` through `M-9`: jump to managed panes by index
+- `M-1` through `M-9`: jump to panes by index
 
 Set any of the `@swarmux-*-key` values to an empty string if you want to disable that binding.
 
@@ -123,7 +123,7 @@ swarmux panes jump --index 1
 
 `overview --tui` has `Tasks` and `Stats`. Inside `Tasks`, `f` cycles `active -> terminal -> all`. `Enter` jumps to the task session. `x` stops an active task. `X` kills it.
 
-`M-1` through `M-9` use `swarmux panes jump --index <n>` under the hood, targeting the first nine managed panes in `swarmux panes` order.
+`M-1` through `M-9` use `swarmux panes jump --index <n>` under the hood, targeting the same ordered pane set shown in the sidebar.
 
 ## Runtime choices
 

@@ -6,5 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 bin="$(require_swarmux_bin)"
 index="${1:?missing index}"
+pane_id="${2:-}"
 
-"$bin" panes jump --index "$index" >/dev/null
+if [ -n "$pane_id" ]; then
+  "$bin" panes jump --index "$index" --exclude-pane-id "$pane_id" >/dev/null
+else
+  "$bin" panes jump --index "$index" >/dev/null
+fi
