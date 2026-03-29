@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/ghillb/swarmux/compare/v0.1.9...v0.1.10) - 2026-03-29
+
+### Added
+
+- *(tmux)* add TPM plugin bindings
+
+### Fixed
+
+- *(tmux)* align jump indexing with sidebar
+
+### Other
+
+- update changelog and wording
+
 ## [0.1.9](https://github.com/ghillb/swarmux/compare/v0.1.8...v0.1.9) - 2026-03-28
 
 ### Added
